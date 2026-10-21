@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0c0a10">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>검사의 던전</title>
+<!-- ?v= 는 폰 브라우저가 예전 파일을 붙잡지 않게(고칠 때마다 올림) -->
+<link rel="stylesheet" href="css/style.css?v=0.1">
+</head>
+<body>
+<div id="app">
+  <div id="stage"><canvas id="cv"></canvas></div>
+  <div id="hud">
+    <div id="stats">
+      <div id="hLv">Lv 1</div>
+      <div class="bars">
+        <div class="bar hp"><b id="hpFill"></b><span id="hpTxt"></span></div>
+        <div class="bar xp"><b id="xpFill"></b></div>
+      </div>
+      <div id="hKills">☠ 0</div>
+    </div>
+    <button id="bPause" aria-label="일시정지">Ⅱ</button>
+  </div>
+  <!-- 오른손 버튼(가로 화면 오른쪽 아래) -->
+  <div id="pad">
+    <button id="bUlt" class="sk ult"><i></i><span>필살</span></button>
+    <button id="bS2" class="sk s2"><i></i><span>돌진</span></button>
+    <button id="bS1" class="sk s1"><i></i><span>회전</span></button>
+    <button id="bDodge" class="sk dodge"><i></i><span>회피</span></button>
+  </div>
+  <div id="toast"></div>
+  <div id="rotate" hidden>가로로 돌리면 더 편해요</div>
+  <div id="panel" hidden><div id="pbox"></div></div>
+</div>
+<script src="js/data.js?v=0.1"></script>
+<script src="art/art.js?v=0.1" onerror="window.ART_MISSING = true"></script>
+<script src="js/game.js?v=0.1"></script>
+<script src="js/main.js?v=0.1"></script>
+</body>
+</html>

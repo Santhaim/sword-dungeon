@@ -1,0 +1,58 @@
+:root { --bg: #0c0a10; --panel: #1c1a26; --line: #3a3550; --text: #ece9e0; --dim: #a29db0; --accent: #ffcf5a; }
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); overflow: hidden; touch-action: none; user-select: none; -webkit-user-select: none;
+  font-family: system-ui, -apple-system, "Malgun Gothic", "Apple SD Gothic Neo", sans-serif; }
+#app { position: relative; height: 100dvh; width: 100vw; }
+#stage { position: absolute; inset: 0; }
+#cv { display: block; image-rendering: pixelated; touch-action: none; }
+
+/* 왼쪽 위: 레벨 · 체력 · 경험치 · 처치 수 */
+#hud { position: absolute; left: 0; right: 0; top: 0; display: flex; align-items: flex-start; justify-content: space-between; pointer-events: none;
+  padding: max(6px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right)) 0 max(8px, env(safe-area-inset-left)); }
+#stats { display: flex; align-items: center; gap: 8px; font-weight: 800; text-shadow: 0 1px 2px #000, 0 0 3px #000; }
+#hLv { font-size: 16px; color: var(--accent); }
+.bars { display: flex; flex-direction: column; gap: 3px; width: min(240px, 34vw); }
+.bar { position: relative; height: 12px; background: rgba(0, 0, 0, 0.6); border: 1px solid #000; border-radius: 4px; overflow: hidden; }
+.bar b { display: block; height: 100%; width: 0; }
+.bar.hp b { background: linear-gradient(#ff7a6a, #c8283a); }
+.bar.xp { height: 6px; }
+.bar.xp b { background: linear-gradient(#8fd8ff, #3a8fe0); }
+.bar span { position: absolute; inset: 0; font-size: 10px; line-height: 12px; text-align: center; color: #fff; }
+#hKills { font-size: 14px; }
+#bPause { pointer-events: auto; font: inherit; font-size: 16px; color: var(--text); background: rgba(30, 28, 44, 0.8); border: 1px solid var(--line); border-radius: 8px; width: 42px; height: 36px; min-height: 0; padding: 0; }
+
+/* 오른손 버튼: 회피(가장 크게 · 구석) · 스킬 2 · 필살(게이지 고리) */
+#pad { position: absolute; right: max(10px, env(safe-area-inset-right)); bottom: max(10px, env(safe-area-inset-bottom)); width: 210px; height: 190px; pointer-events: none; }
+.sk { position: absolute; pointer-events: auto; border-radius: 50%; padding: 0; min-height: 0; border: 2px solid rgba(255, 255, 255, 0.35);
+  background: rgba(30, 28, 44, 0.72); color: #fff; font-weight: 800; overflow: hidden; touch-action: none; }
+.sk span { position: relative; z-index: 1; font-size: 14px; text-shadow: 0 1px 2px #000; }
+.sk i { position: absolute; inset: 0; border-radius: 50%; background: conic-gradient(rgba(0, 0, 0, 0.62) var(--cd, 0%), transparent 0); }
+.sk.wait span { opacity: 0.6; }
+.sk:active { transform: scale(0.94); }
+.sk.dodge { right: 0; bottom: 0; width: 84px; height: 84px; background: rgba(60, 70, 110, 0.75); }
+.sk.s1 { right: 96px; bottom: 6px; width: 64px; height: 64px; }
+.sk.s2 { right: 12px; bottom: 96px; width: 64px; height: 64px; }
+.sk.ult { right: 84px; bottom: 84px; width: 72px; height: 72px; border-color: rgba(255, 207, 90, 0.5); }
+.sk.ult i { background: conic-gradient(rgba(255, 200, 70, 0.55) var(--g, 0%), rgba(0, 0, 0, 0.45) 0); }
+.sk.ult.full { border-color: #ffe08a; box-shadow: 0 0 14px #ffcf5a; animation: pulse 0.8s ease-in-out infinite alternate; }
+@keyframes pulse { from { box-shadow: 0 0 6px #ffcf5a; } to { box-shadow: 0 0 18px #ffe08a; } }
+
+#toast { position: absolute; left: 0; right: 0; top: 26%; text-align: center; font-size: 20px; font-weight: 800; color: #ffe08a; text-shadow: 0 2px 4px #000, 0 0 6px #000; pointer-events: none; opacity: 0; transition: opacity 0.4s; }
+#toast.on { opacity: 1; }
+#rotate { position: absolute; left: 50%; top: 56px; transform: translateX(-50%); background: rgba(0, 0, 0, 0.6); border-radius: 8px; padding: 4px 10px; font-size: 13px; pointer-events: none; }
+#rotate[hidden] { display: none; }
+
+#panel { position: absolute; inset: 0; background: rgba(0, 0, 0, 0.6); display: flex; align-items: center; justify-content: center; z-index: 10; }
+#panel[hidden] { display: none; }
+#pbox { width: min(560px, 94vw); max-height: 94dvh; overflow: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px; display: flex; flex-direction: column; gap: 9px; }
+#pbox h2 { margin: 0; font-size: 19px; color: var(--accent); text-align: center; }
+#pbox p { margin: 0; font-size: 13.5px; line-height: 1.5; color: var(--dim); text-align: center; }
+#pbox .help { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; font-size: 13px; color: var(--dim); }
+#pbox .help b { color: var(--text); font-weight: 700; }
+button { font: inherit; color: var(--text); background: #2b2840; border: 1px solid var(--line); border-radius: 9px; font-size: 15px; font-weight: 600; min-height: 40px; padding: 4px 8px; touch-action: manipulation; }
+button:active, button.on { background: #48426a; }
+button.main { background: #7a3a2e; border-color: #9a4b3b; font-size: 17px; }
+.row { display: flex; gap: 6px; }
+.row button { flex: 1; }
+#hero { display: block; margin: 0 auto; image-rendering: pixelated; width: 144px; height: 144px; }
+.stat { font-size: 15px; line-height: 1.7; text-align: center; }
