@@ -270,7 +270,7 @@
           <b>공격</b><span>적이 가까이 오면 저절로(검사 3연타 · 궁수 화살)</span>
           <b>오른손</b><span>큰 단추 = 직업 기술(찌르기·도약·구르기·순간 이동 · 잠깐 무적) · 필살기(재사용 대기) · 스킬은 저절로</span>
           <b>키보드</b><span>WASD·방향키 이동 · Space 직업 기술 · 3 필살기 · Esc 일시정지 · 마우스는 누른 곳으로</span>
-          <b>장비</b><span>주우면 더 좋을 때 바로 낌(아니면 오른쪽 위 «끼기») · 주운 건 모두 창고로(쓰러져도)</span>
+          <b>장비</b><span>주우면 더 좋을 때 바로 장착(아니면 오른쪽 위 «장착» 단추) · 주운 건 모두 창고로(쓰러져도)</span>
           <b>설치</b><span>크롬 ⋮ 메뉴 → «홈 화면에 추가» → «설치» · 아이폰은 사파리 공유 단추 → «홈 화면에 추가»</span>
           <b>요령</b><span>몬스터는 공격 전에 빨갛게 예고 — 그때 비키거나 회피 · 금 간 기둥은 베면 무너짐</span>
         </div></details>
@@ -287,24 +287,28 @@
     const pf = P(), cls = pf.cls, eq = pf.equip[cls] || (pf.equip[cls] = {});
     const byId = id => pf.stash.find(i => i.id === id);
     const usable = it => it.slot !== 'weapon' || it.cls === cls;
+    // 10-23 사용자 «인벤토리에 장비템은 안 보이게 · 장비 쪽에서 해제» → 장착한 것은 위 칸에만(해제 단추) · 창고 목록엔 안 낀 것만
     const slots = Object.keys(D.SLOTS).map(s => {
       const it = byId(eq[s]);
-      return `<div class="slot" data-s="${s}">${it ? itemHtml(it, `data-id="${it.id}"`) : `<div class="empty">${slotIcon(s)} ${D.SLOTS[s]} — 비어 있음</div>`}</div>`;
+      return `<div class="slot" data-s="${s}">${it ? itemHtml(it, `data-id="${it.id}"`, '<div class="row"><button data-a="off">해제</button></div>') : `<div class="empty">${slotIcon(s)} ${D.SLOTS[s]} — 비어 있음</div>`}</div>`;
     }).join('');
     const worn = new Set(Object.values(eq));
-    // 창고 장비마다 같은 칸에 «지금 낀 것»과 견줌(낀 것·다른 직업 무기는 안 견줌)
-    const vsOf = it => worn.has(it.id) || !usable(it) ? null : byId(eq[it.slot]) || 'empty';
-    const list = pf.stash.slice().sort((a, b) => b.rar - a.rar || b.ilvl - a.ilvl).map(it => itemHtml(it, `data-id="${it.id}"`,
-      `<div class="row">${worn.has(it.id) ? '<button data-a="off">빼기</button>' : usable(it) ? '<button data-a="on">끼기</button>' : '<button disabled>다른 직업 무기</button>'}
-       <button data-a="scrap" ${worn.has(it.id) ? 'disabled' : ''}>분해 +${scrapOf(it)}💰</button></div>`, vsOf(it))).join('');
-    // 한꺼번에 분해(10-22 주운 장비가 전부 창고로 들어오며 · 낀 것·전설은 빼고)
+    const wornBy = {};                                   // 다른 직업이 장착한 것(목록엔 두되 표시 · 분해 막음)
+    for (const c in pf.equip) if (c !== cls) for (const s in pf.equip[c]) (wornBy[pf.equip[c][s]] = wornBy[pf.equip[c][s]] || []).push(D.CLASSES[c].name);
+    // 창고 장비마다 같은 칸에 «지금 장착한 것»과 견줌(다른 직업 무기는 안 견줌)
+    const vsOf = it => !usable(it) ? null : byId(eq[it.slot]) || 'empty';
+    const shown = pf.stash.filter(it => !worn.has(it.id)).sort((a, b) => b.rar - a.rar || b.ilvl - a.ilvl);
+    const list = shown.map(it => itemHtml(it, `data-id="${it.id}"`,
+      `<div class="row">${usable(it) ? '<button data-a="on">장착</button>' : '<button disabled>다른 직업 무기</button>'}
+       <button data-a="scrap" ${wornBy[it.id] ? 'disabled' : ''}>분해 +${scrapOf(it)}💰</button></div>${wornBy[it.id] ? `<small class="dim">${wornBy[it.id].join('·')} 장착 중</small>` : ''}`, vsOf(it))).join('');
+    // 한꺼번에 분해(10-22 주운 장비가 전부 창고로 들어오며 · 장착한 것·전설은 빼고)
     const allWorn = new Set(); for (const c in pf.equip) for (const s in pf.equip[c]) allWorn.add(pf.equip[c][s]);
     const bulk = maxRar => pf.stash.filter(it => it.rar <= maxRar && !it.uniq && !allWorn.has(it.id));
     const bulkBtn = (r, label) => { const xs = bulk(r); return `<button data-b="${r}" ${xs.length ? '' : 'disabled'}>${label} ${xs.length}개 분해 +${xs.reduce((a, it) => a + scrapOf(it), 0)}💰</button>`; };
-    el.innerHTML = `<div class="lbl">${D.josa(D.CLASSES[cls].name, '이', '가')} 낀 장비</div>
+    el.innerHTML = `<div class="lbl">${D.josa(D.CLASSES[cls].name, '이', '가')} 장착한 장비</div>
       <div class="slots">${slots}</div>
       <div class="lbl">능력치 <small class="dim">— 괄호 = 축복·장비로 오른 몫(판 안에선 레벨업 몫도 · 일시정지에서 봄)</small></div>${statTable(D.CLASSES[cls], HNS.statParts(cls))}
-      <div class="lbl">창고 ${pf.stash.length} / ${D.STASH_MAX} <small class="dim">— 던전에서 주운 장비는 모두 여기로(쓰러져도) · 넘치면 안 낀 낮은 등급부터 분해</small></div>
+      <div class="lbl">창고 ${shown.length}개 <small class="dim">— 장착한 것은 위에 · 던전에서 주운 장비는 모두 여기로(쓰러져도) · 장착 포함 ${pf.stash.length} / ${D.STASH_MAX} · 넘치면 장착 안 한 낮은 등급부터 분해</small></div>
       <div class="row wrap">${bulkBtn(0, '일반')}${bulkBtn(1, '마법까지')}</div>
       <div class="items">${list || '<p>아직 없음 — 던전에서 주워 오세요</p>'}</div>`;
     el.querySelectorAll('button[data-b]').forEach(b => b.onclick = () => {
@@ -314,7 +318,7 @@
       pf.stash = pf.stash.filter(it => !xs.has(it)); SFX.play('coin');
       SAVE.save(); showTown('gear');
     });
-    el.querySelectorAll('.items .it').forEach(card => card.querySelectorAll('button[data-a]').forEach(b => b.onclick = () => {
+    el.querySelectorAll('.slots .it, .items .it').forEach(card => card.querySelectorAll('button[data-a]').forEach(b => b.onclick = () => {
       click();
       const it = byId(+card.dataset.id);
       if (!it) return;
@@ -421,11 +425,23 @@
     return `<div class="card r${c.rar || 0}" data-i="${i}" style="--rc:${R.color}">
       <div class="rr">${R.name}</div><div class="ic">${c.icon || (c.type === 'gold' ? '💰' : '❤')}</div>
       <div class="nm">${esc(c.name)}</div><div class="lv">${kind}${lv ? ' · ' + lv : ''}</div>
-      <div class="ds">${esc(c.desc || '')}</div>${c.extra ? `<div class="ex">${esc(c.extra)}</div>` : ''}</div>`;
+      <div class="ds">${esc(c.desc || '')}</div>${c.extra ? `<div class="ex">${esc(c.extra)}</div>` : ''}${c.hint ? `<div class="ev">${esc(c.hint)}</div>` : ''}</div>`;
+  }
+  // 진화 짝(10-23 사용자 «스킬 고를 때 아래에 짝 패시브도 있으면 고를 때 도움») — 가진 공격 스킬마다 «단계 + 짝 패시브(가짐 ✓) → 진화»
+  function pairsHtml(G) {
+    if (!G.abil.length) return '';
+    const xs = G.abil.map(a => {
+      const AB = D.ABILITIES[a.k], PS = D.PASSIVES[AB.pair], EV = D.EVOS[AB.evo];
+      if (G.evo[AB.evo]) return `<span class="done">${EV.icon} ${EV.name} ★</span>`;
+      const has = !!G.pass[AB.pair], ready = has && a.lv >= AB.max;
+      return `<span${ready ? ' class="go"' : ''}>${AB.icon} ${AB.name} ${a.lv}/${AB.max} + <b class="${has ? 'ok' : 'no'}">${PS.icon} ${PS.name} ${has ? '✓' : '없음'}</b> → ${EV.icon} ${EV.name}${ready ? ' · 상자!' : ''}</span>`;
+    });
+    return `<div class="pairs"><small>진화 짝</small>${xs.join('')}</div>`;
   }
   function showCards(G, offers) {
     open(`<h2>레벨 업! <small>Lv ${G.lv} · 공격 스킬 ${G.abil.length}/${D.MAX_ABIL} · 패시브 ${Object.keys(G.pass).length}/${D.MAX_PASS}</small></h2>
       <div class="cards">${offers.map(cardHtml).join('')}</div>
+      ${pairsHtml(G)}
       <div class="row">${G.rerolls > 0 ? `<button id="rr">🔁 다시 뽑기 (${G.rerolls})</button>` : ''}</div>`, box => {
       const t0 = performance.now();
       box.querySelectorAll('.card').forEach(el => el.onclick = () => {
@@ -466,15 +482,20 @@
     banner(kind, e.boss.def.name, e.boss.final ? '#ff6a5a' : '#ffb04a');
     $('bossName').textContent = e.boss.def.name;
   }
-  // 장비를 주우면(10-22 «해머워치2처럼 바로 줍고 장비»): 더 좋으면 이미 낌(«장착!») · 아니면 줄에 «끼기» 단추(5초 · 멈추지 않고 바로 낌)
+  // 장비를 주우면(10-22 «해머워치2처럼 바로 줍고 장비»): 더 좋으면 이미 장착(«장착!») · 아니면 줄에 «장착» 단추(5초 · 멈추지 않고 바로 장착)
+  //   10-23 사용자 «끼기·빼기 말고 다른 말» → 장착·해제(판 중 가방은 «장착 중»)
   function onItem(G, it, on) {
     const R = D.ITEM_RARITY[it.rar];
-    const el = loot(`${itemIcon(it)} ${esc(it.name)} <small>${R.name}</small>${on ? ' <em>장착!</em>' : ' <button class="ltb">끼기</button>'}`, R.color, on ? 2.6 : 5);
+    const el = loot(`${itemIcon(it)} ${esc(it.name)} <small>${R.name}</small>${on ? ' <em>장착!</em>' : ' <button class="ltb">장착</button>'}`, R.color, on ? 2.6 : 5);
     const b = el.querySelector('.ltb');
     if (b) b.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); if (HNS.G === G && !G.done) { HNS.wear(it); b.outerHTML = '<em>장착!</em>'; } });
   }
   function buildHtml(G) {
-    const ab = G.abil.map(a => { const AB = D.ABILITIES[a.k], ev = G.evo[AB.evo]; return `<span>${ev ? D.EVOS[AB.evo].icon + ' ' + D.EVOS[AB.evo].name + ' ★' : AB.icon + ' ' + AB.name + ' ' + a.lv}</span>`; });
+    const ab = G.abil.map(a => {                      // 진화 전이면 짝 패시브(10-23 · 다 갖추면 «진화 준비»)
+      const AB = D.ABILITIES[a.k], ev = G.evo[AB.evo], ready = a.lv >= AB.max && G.pass[AB.pair];
+      const tip = ev ? '' : ready ? ' <small class="go">진화 준비 — 상자!</small>' : ` <small>+${D.PASSIVES[AB.pair].name}</small>`;
+      return `<span>${ev ? D.EVOS[AB.evo].icon + ' ' + D.EVOS[AB.evo].name + ' ★' : AB.icon + ' ' + AB.name + ' ' + a.lv}${tip}</span>`;
+    });
     const ps = Object.entries(G.pass).map(([k, v]) => `<span>${D.PASSIVES[k].icon} ${D.PASSIVES[k].name} ${v.lv}</span>`);
     const C = G.C, sk = [[C.basic, 'basic'], ...C.skills.map((k, i) => [D.SKILLS[k].name, 's' + i]), [D.ULTS[C.ult].name, 'ult']]
       .map(([n, k]) => `<span>${n} ${G.skLv[k]}</span>`);
@@ -488,14 +509,15 @@
     HNS.pause(true);
     const slots = Object.keys(D.SLOTS);
     const wornHtml = slots.map((s, i) => `<div class="slot">${G.worn[i] ? itemHtml(G.worn[i]) : `<div class="empty">${slotIcon(s)} ${D.SLOTS[s]} — 비어 있음</div>`}</div>`).join('');
-    const bag = G.bag.slice().reverse().map(it => { const i = slots.indexOf(it.slot), worn = G.worn[i] === it;   // 최근에 주운 것부터 · 지금 낀 것과 견줌
-      return itemHtml(it, `data-id="${it.id}"`, `<div class="row"><button data-a="wear" ${worn ? 'disabled' : ''}>${worn ? '끼고 있음' : '끼기'}</button></div>`, worn ? null : G.worn[i] || 'empty'); }).join('');
+    // 최근에 주운 것부터 · 장착한 것은 위 칸에만(10-23 «인벤토리에 장비템은 안 보이게») · 지금 장착한 것과 견줌
+    const bag = G.bag.slice().reverse().filter(it => !G.worn.includes(it)).map(it => { const i = slots.indexOf(it.slot);
+      return itemHtml(it, `data-id="${it.id}"`, '<div class="row"><button data-a="wear">장착</button></div>', G.worn[i] || 'empty'); }).join('');
     open(`<h2>일시정지 <small>${fmtTime(G.t)} · ${G.dun.name}</small></h2>
       ${buildHtml(G)}
       <details open><summary>능력치 — 괄호 = 축복·장비·레벨업으로 오른 몫</summary>${statTable(G.C, HNS.statParts())}</details>
-      <details ${G.bag.length ? 'open' : ''}><summary>장비 — 낀 것 · 이번 판에 주운 것 ${G.bag.length}개(끝나면 모두 창고로)</summary>
-        <div class="lbl">낀 장비</div><div class="slots">${wornHtml}</div>
-        <div class="lbl">이번 판에 주운 것(최근 것부터)</div><div class="items">${bag || '<p>아직 주운 장비 없음</p>'}</div></details>
+      <details ${G.bag.length ? 'open' : ''}><summary>장비 — 장착한 것 · 이번 판에 주운 것 ${G.bag.length}개(끝나면 모두 창고로)</summary>
+        <div class="lbl">장착한 장비</div><div class="slots">${wornHtml}</div>
+        <div class="lbl">이번 판에 주운 것 — 장착 안 한 것(최근 것부터)</div><div class="items">${bag || '<p>장착 안 한 주운 장비 없음</p>'}</div></details>
       <details><summary>설정</summary>
         <div class="row"><button id="snd" class="${SFX.on ? 'on' : ''}">${SFX.on ? '효과음 켜짐' : '효과음 꺼짐'}</button><button id="pfs">전체 화면</button></div>
         ${musicRow()}

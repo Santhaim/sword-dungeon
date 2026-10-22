@@ -441,6 +441,10 @@ const HNS = (() => {
     }
   }
   function playAct(act, fd, hit, onHit, ang) {
+    // 하던 동작의 타격이 아직이면 먼저 터뜨림 — 10-23 사용자 «움직이며 검사 필살 → 안 나감»: 자동 대지 가르기가 같은 동작(B)으로 필살 동작을 덮어
+    //   필살 타격(3번째 칸)이 영영 안 나왔음(재사용 대기만 돎) · 이제 무엇이 덮어도 타격은 사라지지 않음
+    const old = G.p.atk;
+    if (old && !old.done) { old.done = true; old.onHit && old.onHit(old); }
     const fds = (Array.isArray(fd) ? fd : [fd, fd, fd, fd, fd, fd]);
     const n = G.H.acts[act] ? G.H.acts[act].len[0] : fds.length;
     G.p.atk = { act, fds: fds.slice(0, n), hit: Math.min(hit, n - 1), onHit, ang, t: 0, fi: 0, done: false, total: fds.slice(0, n).reduce((a, b) => a + b, 0) };
@@ -747,7 +751,8 @@ const HNS = (() => {
   function ultCdOf() { return D.ULTS[G.C.ult].cd * (G.skLv.ult >= 4 ? 0.8 : 1) * cdMul() / (1 + G.st.ultc); }
   function useUlt() {
     const p = G && G.p;
-    if (busy() || G.ultCd > 0 || p.dash) return false;
+    if (busy() || G.ultCd > 0) return false;
+    if (p.dash) { G.ultQ = 0.6; return true; }      // 찌르기·구르기 중이면 끝나자마자 나감(update)
     const u = D.ULTS[G.C.ult], lv = G.skLv.ult, mul = u.mul * (lv >= 2 ? 1.35 : 1) * (1 + G.skBonus.ult), r = u.r * (lv >= 3 ? 1.2 : 1) * (1 + G.st.area);
     G.ultMax = G.ultCd = ultCdOf(); G.ultKillsNow = 0;
     p.inv = Math.max(p.inv, 0.7);
@@ -917,10 +922,11 @@ const HNS = (() => {
         a.t = (a.t || 0) - dt;
         if (a.t <= 0) {
           a.t = (evo ? 1.2 : AB.cd[a.lv]) * cdMul();
-          const tg = nearestEnemy(170), base = tg ? Math.atan2(tg.y - p.y, tg.x - p.x) : facingAng();
+          // 10-23 측정: 둘 이상일 때 0.5 간격으로 벌어져 가운데 적을 둘 다 비껴갔음(3단계 피해 ≈ 0) → 0.22 간격 · 적 몸통 높이를 겨눔
+          const tg = nearestEnemy(170), base = tg ? Math.atan2(tg.y - tg.sh.wh[1] * 0.45 * tg.scale - (p.y - 12), tg.x - p.x) : facingAng();
           const n = evo ? 4 : AB.n[a.lv], reach = (evo ? 150 : AB.reach[a.lv]) * (1 + G.st.area * 0.5), size = evo ? 1.6 : AB.size[a.lv];
           for (let i = 0; i < n; i++) {
-            const an = evo ? base + i * Math.PI / 2 : base + (i - (n - 1) / 2) * 0.5;
+            const an = evo ? base + i * Math.PI / 2 : base + (i - (n - 1) / 2) * 0.22;
             G.pproj.push({ k: 'axe', axe: true, x: p.x, y: p.y - 12, vx: 0, vy: 0, ang: an, life: 9, out: reach, d: 0, back: false, spin: rand(0, 6), size,
                            dmg: dmgBase() * (evo ? 3 : AB.mul[a.lv]) * (1 + a.bonus), pierce: 1e9, kind: 'abil', hit: new Set(), r: 6 * size });
           }
@@ -975,8 +981,70 @@ const HNS = (() => {
             sfx('whirl');
           }
         }
+      } else if (a.k === 'hawk') {                    // 추적 화살(궁수 전용 · 10-23): 화면 안 가까운 적마다 겨눠 꺾여 날아감 · 진화(별빛 사냥) = 1초마다 여섯 · 맞으면 작게 터짐
+        const evo = G.evo.starhunt;
+        a.t = (a.t || 0) - dt;
+        if (a.t <= 0) {
+          a.t = (evo ? 1.2 : AB.cd[a.lv]) * cdMul();   // 10-23 측정: 1초·여섯·1.6배였을 땐 칼날 폭풍의 5배 → 낮춤
+          const vis = visEnemies(), n = evo ? 5 : AB.n[a.lv], dmg = dmgBase() * (evo ? 1.3 : AB.mul[a.lv]) * (1 + a.bonus);
+          for (let i = 0; i < n && vis.length; i++) {
+            const tg = vis[i % vis.length], an = Math.atan2(tg.y - p.y, tg.x - p.x) + (i - (n - 1) / 2) * 0.35;
+            shootArrow(an, dmg, evo || a.lv >= 5 ? 1 : 0, 'abil', { home: tg, turn: 7, life: 1.1, hawk: true, star: !!evo });
+          }
+          if (vis.length) sfx('shot');
+        }
+      } else if (a.k === 'turret') {                  // 포탑(권총수 전용 · 10-23): 발밑에 세우면 몇 초 동안 가까운 적을 쏨 · 진화(포탑 요새) = 셋이 늘 둘레를 따라다니며 관통탄
+        const evo = G.evo.fortress;
+        a.tur = a.tur || [];
+        if (evo) {
+          while (a.tur.length < 3) a.tur.push({ x: p.x, y: p.y, t: 1e9, fire: 0.3, ang: 0, slot: a.tur.length });
+          for (const tu of a.tur) { const an = tu.slot * Math.PI * 2 / 3 + G.t * 0.6; tu.x = p.x + Math.cos(an) * 30; tu.y = p.y + Math.sin(an) * 24; tu.t = 1e9; }
+        } else {
+          a.t = (a.t || 0) - dt;
+          if (a.t <= 0) {
+            a.t = AB.cd[a.lv] * cdMul();
+            for (let i = 0; i < AB.n[a.lv]; i++) a.tur.push({ x: p.x + (i ? 16 : -12), y: p.y + 4, t: AB.dur[a.lv], fire: 0.25, ang: facingAng(), born: G.t });
+            sfx('skill');
+          }
+        }
+        const rate = evo ? 0.35 : AB.rate[a.lv], dmg = dmgBase() * (evo ? 0.8 : AB.mul[a.lv]) * (1 + a.bonus);   // 10-23 측정: 0.25초·1.0배였을 땐 칼날 폭풍의 3.4배 → 낮춤
+        for (const tu of a.tur) {
+          tu.t -= dt; tu.fire -= dt;
+          if (tu.fire > 0) continue;
+          let tg = null, bd = 170 * 170;
+          near(tu.x, tu.y, 170, e => { if (e.hidden || e.hp <= 0) return; const d = (e.x - tu.x) ** 2 + (e.y - tu.y) ** 2; if (d < bd) { bd = d; tg = e; } });
+          if (!tg) continue;
+          tu.fire = rate; tu.ang = Math.atan2(tg.y - tu.y, tg.x - tu.x); tu.kick = 0.08;
+          shootBullet(tu.ang, dmg, evo ? 2 : 0, 'abil', { x: tu.x + Math.cos(tu.ang) * 8, y: tu.y - 9 + Math.sin(tu.ang) * 8 });
+        }
+        a.tur = a.tur.filter(tu => tu.t > 0);
+      } else if (a.k === 'orbs') {                    // 비전 구슬(마법사 전용 · 10-23): 둘레를 돌다 적에게 날아가 터짐(잠깐 뒤 다시 생김) · 진화(은하) = 여섯이 넓게 돌며 0.5초마다 하나씩
+        const evo = G.evo.galaxy, n = evo ? 6 : AB.n[a.lv], r = (evo ? 44 : 30) * (1 + G.st.area * 0.5);
+        a.ang = (a.ang || 0) + (evo ? 2.4 : 3) * dt;
+        a.cool = Math.max(0, (a.cool || 0) - dt);
+        a.balls = [];
+        for (let i = 0; i < n; i++) { const an = a.ang + i * Math.PI * 2 / n; a.balls.push({ x: p.x + Math.cos(an) * r, y: p.y - 10 + Math.sin(an) * r * 0.8, an }); }
+        a.t = (a.t || 0) - dt;
+        if (a.t <= 0) {
+          const vis = visEnemies();
+          if (vis.length) {
+            a.t = (evo ? 0.6 : AB.cd[a.lv]) * cdMul();   // 10-23 측정: 0.5초·3.5배였을 땐 칼날 폭풍의 2배 → 낮춤
+            const shots = evo ? 1 : n, dmg = dmgBase() * (evo ? 3.0 : AB.mul[a.lv]) * (1 + a.bonus), aoe = (evo ? 46 : AB.aoe[a.lv]) * (1 + G.st.area);
+            for (let i = 0; i < shots; i++) {
+              const b0 = a.balls[evo ? (a.next = ((a.next || 0) + 1) % n) : i], tg = vis[i % vis.length], an = Math.atan2(tg.y - b0.y, tg.x - b0.x);
+              G.pproj.push({ k: 'missile', orb: true, gal: !!evo, x: b0.x, y: b0.y, vx: Math.cos(an) * 200, vy: Math.sin(an) * 200, life: 1.2, dmg, pierce: 0,
+                             kind: 'abil', hit: new Set(), r: 5, aoe, home: tg, turn: 6, c: evo ? '#b8a0ff' : '#7ab8ff' });
+            }
+            if (!evo) a.cool = 0.7;                   // 날아간 구슬은 잠깐 비었다 다시 차오름(그림)
+            sfx('skill');
+          }
+        }
       }
     }
+  }
+  function visEnemies() {                             // 화면 안 적(가까운 것부터)
+    const p = G.p, vis = G.enemies.filter(e => !e.hidden && e.hp > 0 && Math.abs(e.x - p.x) < VW / 2 && Math.abs(e.y - p.y) < VH / 2);
+    return vis.sort((x, y) => dist2(x, p) - dist2(y, p));
   }
   function flameAt(x, y, r, dmg, burn) {              // 불기둥: 솟는 불길 + 불똥 · burn 초 동안 그 자리 불바닥(0.3초마다 작은 피해)
     G.fx.push({ k: 'flame', x, y, r, t: 0, dur: 0.6 });
@@ -1005,18 +1073,21 @@ const HNS = (() => {
                 ...G.C.skills.map((k, i) => ['s' + i, D.SKILLS[k].name, D.SKILLS[k].icon, D.SKILLS[k].ups]), ['ult', U.name, U.icon, U.ups]];
     for (const [key, name, icon, ups] of sk) if (G.skLv[key] < D.MAX_LV) out.push({ type: 'skill', key, name, icon, lv: G.skLv[key] + 1, desc: ups[G.skLv[key] - 1], w: 9 });
     const unlocked = new Set(D.START_ABIL.concat(SAVE.P.unlocked.abil || []));
+    // 진화 조건 줄(10-23 사용자 «스킬이 더 강력하게 바뀌는 건 적용 안 됐지?» — 들어가 있었지만 조건이 화면 어디에도 없었음)
+    const evoHint = AB => `진화 → ${D.EVOS[AB.evo].name}: 5단계 + ${D.PASSIVES[AB.pair].name} 패시브${G.pass[AB.pair] ? '(가짐 ✓)' : ''} · 상자에서`;
     for (const k in D.ABILITIES) {
       const own = G.abil.find(a => a.k === k), AB = D.ABILITIES[k];
       if (G.evo[AB.evo] || (AB.cls && AB.cls !== G.cls)) continue;
-      if (own && own.lv < AB.max) out.push({ type: 'abil', key: k, name: AB.name, icon: AB.icon, lv: own.lv + 1, desc: AB.desc(own.lv + 1), w: 11 });
-      else if (!own && G.abil.length < D.MAX_ABIL && unlocked.has(k)) out.push({ type: 'abil', key: k, name: AB.name, icon: AB.icon, lv: 1, desc: AB.desc(1), w: 8, isNew: true });
+      if (own && own.lv < AB.max) out.push({ type: 'abil', key: k, name: AB.name, icon: AB.icon, lv: own.lv + 1, desc: AB.desc(own.lv + 1), w: 11, hint: evoHint(AB) });
+      else if (!own && G.abil.length < D.MAX_ABIL && unlocked.has(k)) out.push({ type: 'abil', key: k, name: AB.name, icon: AB.icon, lv: 1, desc: AB.desc(1), w: 8, isNew: true, hint: evoHint(AB) });
     }
     const npass = Object.keys(G.pass).length;
+    const pairOf = k => G.abil.map(a => D.ABILITIES[a.k]).find(AB => AB.pair === k && !G.evo[AB.evo]);   // 가진 공격 스킬 중 이 패시브가 짝인 것
     for (const k in D.PASSIVES) {
-      const own = G.pass[k], PS = D.PASSIVES[k];
+      const own = G.pass[k], PS = D.PASSIVES[k], AB = pairOf(k), hint = AB ? `${AB.name} 진화 재료` : '';
       if (PS.cls && !PS.cls.includes(G.cls)) continue;   // 그 직업만(관통 = 궁수·권총수)
-      if (own && own.lv < D.MAX_LV) out.push({ type: 'pass', key: k, name: PS.name, icon: PS.icon, lv: own.lv + 1, w: 7 });
-      else if (!own && npass < D.MAX_PASS) out.push({ type: 'pass', key: k, name: PS.name, icon: PS.icon, lv: 1, w: 5, isNew: true });
+      if (own && own.lv < D.MAX_LV) out.push({ type: 'pass', key: k, name: PS.name, icon: PS.icon, lv: own.lv + 1, w: 7, hint });
+      else if (!own && npass < D.MAX_PASS) out.push({ type: 'pass', key: k, name: PS.name, icon: PS.icon, lv: 1, w: 5, isNew: true, hint });
     }
     return out;
   }
@@ -1615,8 +1686,11 @@ const HNS = (() => {
     G.dodgeCd = Math.max(0, G.dodgeCd - dt);
     for (let i = 0; i < G.cds.length; i++) G.cds[i] = Math.max(0, G.cds[i] - dt);
     G.ultCd = Math.max(0, G.ultCd - dt);
+    // 몸 옮기는 중(찌르기·구르기)에 누른 필살은 끝나자마자(10-23 · 눌렀는데 안 나가는 일 없게)
+    if (G.ultQ) { G.ultQ = Math.max(0, G.ultQ - dt); if (!p.dash) { G.ultQ = 0; useUlt(); } }
     // 스킬 자동(10-22 사용자 «스킬은 자동으로 · 회피 버튼도 거의 안 누름»): 대기가 끝났고 사거리 안에 적이 있으면 바로 · 필살·회피는 버튼
-    if (!G.cleared && !p.dash) for (let i = 0; i < G.C.skills.length; i++) {
+    //   10-23 하던 동작(필살·일반 공격)의 타격이 나간 뒤에만 — 필살 동작을 가로채지 않게
+    if (!G.cleared && !p.dash && !(p.atk && !p.atk.done)) for (let i = 0; i < G.C.skills.length; i++) {
       if (G.cds[i] > 0 || G.C.skills[i] === G.C.manual) continue;          // 몸 옮기기(회피 자리)는 손으로만
       if (nearestEnemy(AUTO_R[G.C.skills[i]] || 120)) useSkill(i, true);
     }
@@ -1727,9 +1801,9 @@ const HNS = (() => {
     // 주인공 탄(검기·화살·총알·마법탄·얼음 조각·비수)
     for (const b of G.pproj) {
       b.life -= dt;
-      if (b.home && b.home.hp > 0) {                  // 마법탄: 겨눈 적 쪽으로 조금씩 꺾임
+      if (b.home && b.home.hp > 0) {                  // 마법탄·추적 화살·비전 구슬: 겨눈 적 쪽으로 조금씩 꺾임(turn = 초당 꺾는 각)
         const h = b.home, want = Math.atan2(h.y - h.sh.wh[1] * 0.45 * h.scale - b.y, h.x - b.x), cur = Math.atan2(b.vy, b.vx);
-        const tr = D.MAGIC.turn * dt, na = cur + Math.max(-tr, Math.min(tr, angDiff(want, cur))), sp = Math.hypot(b.vx, b.vy);
+        const tr = (b.turn || D.MAGIC.turn) * dt, na = cur + Math.max(-tr, Math.min(tr, angDiff(want, cur))), sp = Math.hypot(b.vx, b.vy);
         b.vx = Math.cos(na) * sp; b.vy = Math.sin(na) * sp;
       }
       if (b.axe) {                                    // 회전 도끼: 나갈수록 느려지다 끝(또는 기둥)에서 돌아옴 · 돌아올 땐 점점 빨라져 주인공에게 꽂힘
@@ -1768,11 +1842,12 @@ const HNS = (() => {
         hurtEnemy(e, b.dmg, b.vx / l * kb, b.vy / l * kb, b.kind);
         if (b.boom) { b.boom = false; blastAt(e.x, e.y, 22 * (1 + G.st.area), b.dmg * 0.8, 'ult', '#ff8a3a'); }   // 총알 폭풍 폭발탄(처음 맞은 자리에서 한 번)
         if (b.k === 'arrow' && b.kind === 'atk' && G.uniq.has('blastarrow')) blastAt(e.x, e.y, 18 * (1 + G.st.area), b.dmg * 0.5, 'abil', '#ffb070');   // 폭발 화살(전설)
+        if (b.star) blastAt(e.x, e.y, 16 * (1 + G.st.area), b.dmg * 0.35, 'abil', '#fff2a0');   // 별빛 사냥(진화): 맞은 자리 작게 터짐
         if (--b.pierce < 0) b.life = 0;
       });
       if (b.k !== 'wave' && !b.axe && !b.tw && pillarAt(b.x, b.y + 8)) b.life = 0;   // 검기·도끼·회오리는 기둥에 안 막힘(도끼는 위에서 되돌아옴)
       if (b.aoe && b.life <= 0 && !b.done) {
-        b.done = true; blastAt(b.x, b.y + 10, b.aoe, b.dmg, b.kind); sfx('hit');
+        b.done = true; blastAt(b.x, b.y + 10, b.aoe, b.dmg, b.kind, b.c); sfx('hit');
         if (b.kind === 'atk' && G.uniq.has('chainbolt')) {                   // 연쇄 번개(전설): 터진 자리 가까운 적 둘
           const bx = b.x, by = b.y + 10, hits = [];
           near(bx, by, 80, e => { if (hits.length < 2 && Math.hypot(e.x - bx, e.y - by) < 80) hits.push(e); });
@@ -2283,6 +2358,35 @@ const HNS = (() => {
         ctx.lineCap = 'butt'; ctx.lineJoin = 'miter'; ctx.restore();
       }
     }
+    // 10-23 직업 전용 공격 스킬 그림 — 포탑(권총수): 세 다리 받침 + 몸통 + 적 쪽으로 도는 총신 · 진화(요새)는 놋쇠 빛 / 비전 구슬(마법사): 둘레를 도는 빛 구슬
+    for (const a of G.abil) if (a.k === 'turret' && a.tur) for (const tu of a.tur) {
+      const x = Math.round(tu.x), y = Math.round(tu.y), gold = !!G.evo.fortress, rise = Math.min(1, (G.t - (tu.born || 0)) / 0.2);
+      const fade = Math.min(1, tu.t / 0.4), kick = (tu.kick = Math.max(0, (tu.kick || 0) - 1 / 60)) > 0 ? 2 : 0;
+      ctx.globalAlpha = 0.35 * fade; ctx.fillStyle = '#000'; ctx.beginPath(); ctx.ellipse(x, y + 1, 8, 3, 0, 0, 7); ctx.fill();
+      ctx.globalAlpha = fade;
+      ctx.strokeStyle = '#140c14'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(x - 6, y + 1); ctx.lineTo(x, y - 5 * rise); ctx.lineTo(x + 6, y + 1); ctx.moveTo(x, y - 5 * rise); ctx.lineTo(x, y + 2); ctx.stroke();
+      ctx.strokeStyle = gold ? '#c8963a' : '#6a7080'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(x - 6, y + 1); ctx.lineTo(x, y - 5 * rise); ctx.lineTo(x + 6, y + 1); ctx.stroke();
+      const by = y - 9 * rise;
+      ctx.save(); ctx.translate(x, by); ctx.rotate(tu.ang);
+      ctx.fillStyle = '#140c14'; ctx.fillRect(-1 - kick, -3, 12, 6); ctx.fillStyle = gold ? '#e8c060' : '#a6b4ca'; ctx.fillRect(0 - kick, -1, 10, 2);   // 총신
+      ctx.restore();
+      ctx.fillStyle = '#140c14'; ctx.beginPath(); ctx.arc(x, by, 5, 0, 7); ctx.fill();
+      ctx.fillStyle = gold ? '#b8862a' : '#66748e'; ctx.beginPath(); ctx.arc(x, by, 4, 0, 7); ctx.fill();
+      ctx.fillStyle = gold ? '#ffe6a0' : '#d6dde8'; ctx.fillRect(x - 2, by - 3, 2, 2);
+      ctx.fillStyle = (G.t * 4 | 0) % 2 ? '#ff5a4a' : '#ffd25a'; ctx.fillRect(x, by - 1, 1, 1);                                           // 깜빡이는 불빛
+      ctx.globalAlpha = 1;
+    }
+    for (const a of G.abil) if (a.k === 'orbs' && a.balls) {
+      const gal = !!G.evo.galaxy, c1 = gal ? '#b8a0ff' : '#7ab8ff', c2 = gal ? '#f0e8ff' : '#e0f0ff', show = 1 - (a.cool || 0) / 0.7;
+      for (const b of a.balls) {
+        const s = 2.5 + 2 * show + Math.sin(G.t * 6 + b.an) * 0.5;
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = 0.35 * show; ctx.fillStyle = c1; ctx.beginPath(); ctx.arc(b.x, b.y, s + 4, 0, 7); ctx.fill();
+        ctx.globalAlpha = 0.9 * Math.max(0.25, show); ctx.fillStyle = c1; ctx.beginPath(); ctx.arc(b.x, b.y, s, 0, 7); ctx.fill();
+        ctx.fillStyle = c2; ctx.beginPath(); ctx.arc(b.x - 1, b.y - 1, s * 0.45, 0, 7); ctx.fill();
+        ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
+      }
+    }
     // 탄: 주인공(검기·화살·얼음) · 적(화살·마력·끈적이·도끼)
     for (const b of G.pproj) {
       if (b.k === 'wave') {                           // 검기(10-22 화려하게): 넓은 빛 겹(더하기) + 흰 날 + 뒤로 끌리는 잔상 초승달 둘
@@ -2307,6 +2411,14 @@ const HNS = (() => {
           ctx.strokeStyle = b.kind === 'ult' ? '#ff9a4a' : '#ffe6a0'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(b.x - ux * 5, b.y - uy * 5); ctx.lineTo(b.x + ux, b.y + uy); ctx.stroke();
           ctx.fillStyle = '#ffffff'; ctx.fillRect(Math.round(b.x), Math.round(b.y), 1, 1);
         }
+      } else if (b.k === 'missile' && b.orb) {        // 비전 구슬(10-23): 빛 구슬 + 뒤로 끌리는 빛 꼬리
+        const l = Math.hypot(b.vx, b.vy) || 1, ux = b.vx / l, uy = b.vy / l, c1 = b.gal ? '#b8a0ff' : '#7ab8ff';
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = 0.45; ctx.strokeStyle = c1; ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(b.x - ux * 16, b.y - uy * 16); ctx.lineTo(b.x, b.y); ctx.stroke();
+        ctx.globalAlpha = 0.4; ctx.fillStyle = c1; ctx.beginPath(); ctx.arc(b.x, b.y, 8, 0, 7); ctx.fill();
+        ctx.globalAlpha = 1; ctx.beginPath(); ctx.arc(b.x, b.y, 4, 0, 7); ctx.fill();
+        ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(b.x - 1, b.y - 1, 2, 0, 7); ctx.fill();
+        ctx.globalCompositeOperation = 'source-over';
       } else if (b.k === 'missile') {
         const x = Math.round(b.x), y = Math.round(b.y), l = Math.hypot(b.vx, b.vy) || 1;
         ctx.globalAlpha = 0.5; ctx.fillStyle = '#7a48b0'; ctx.fillRect(Math.round(x - b.vx / l * 4), Math.round(y - b.vy / l * 4), 2, 2); ctx.globalAlpha = 1;
@@ -2317,18 +2429,32 @@ const HNS = (() => {
         if (b.kind === 'skill') {                     // 스킬 화살: 하늘빛 꼬리
           ctx.globalAlpha = 0.55; ctx.strokeStyle = '#9ae6ff'; ctx.lineWidth = 2;
           ctx.beginPath(); ctx.moveTo(b.x - ux * 16, b.y - uy * 16); ctx.lineTo(b.x, b.y); ctx.stroke(); ctx.globalAlpha = 1;
+        } else if (b.hawk) {                          // 추적 화살(10-23): 연둣빛 꼬리 · 진화(별빛 사냥)는 금빛 + 반짝임
+          ctx.globalCompositeOperation = 'lighter';
+          ctx.globalAlpha = 0.6; ctx.strokeStyle = b.star ? '#ffe680' : '#9dffb0'; ctx.lineWidth = 3;
+          ctx.beginPath(); ctx.moveTo(b.x - ux * 18, b.y - uy * 18); ctx.lineTo(b.x, b.y); ctx.stroke();
+          if (b.star) { ctx.globalAlpha = 0.5; ctx.fillStyle = '#fff6c0'; ctx.beginPath(); ctx.arc(b.x, b.y, 4, 0, 7); ctx.fill(); }
+          ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
         }
         ctx.strokeStyle = '#5a3a1a'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(b.x - ux * 7, b.y - uy * 7); ctx.lineTo(b.x + ux * 3, b.y + uy * 3); ctx.stroke();
         ctx.fillStyle = '#e8eef8'; ctx.fillRect(Math.round(b.x + ux * 3), Math.round(b.y + uy * 3), 1, 1);
       } else if (b.k === 'shard') {
         ctx.fillStyle = '#bfefff'; ctx.fillRect(Math.round(b.x) - 1, Math.round(b.y) - 1, 3, 3);
-      } else if (b.k === 'knife') {                   // 비수(10-22 화려하게): 뒤로 끌리는 빛줄(더하기) + 칼
-        const l = Math.hypot(b.vx, b.vy) || 1, ux = b.vx / l, uy = b.vy / l;
-        ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.5; ctx.strokeStyle = G.evo.tempest ? '#c89aff' : '#bfefff'; ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.moveTo(b.x - ux * 15, b.y - uy * 15); ctx.lineTo(b.x, b.y); ctx.stroke();
+      } else if (b.k === 'knife') {                   // 비수(10-22 화려하게 · 10-23 사용자 «작아서 잘 안 보임» → 두 배 크기 칼 + 굵은 빛 꼬리)
+        const l = Math.hypot(b.vx, b.vy) || 1, ux = b.vx / l, uy = b.vy / l, evo = G.evo.tempest;
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = 0.45; ctx.strokeStyle = evo ? '#c89aff' : '#7fd8ff'; ctx.lineWidth = 5;
+        ctx.beginPath(); ctx.moveTo(b.x - ux * 24, b.y - uy * 24); ctx.lineTo(b.x - ux * 2, b.y - uy * 2); ctx.stroke();
+        ctx.globalAlpha = 0.8; ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.moveTo(b.x - ux * 14, b.y - uy * 14); ctx.lineTo(b.x - ux * 2, b.y - uy * 2); ctx.stroke();
         ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
-        ctx.save(); ctx.translate(Math.round(b.x), Math.round(b.y)); ctx.rotate(b.ang + (G.evo.tempest ? G.t * 20 : 0));
-        ctx.fillStyle = '#140c14'; ctx.fillRect(-4, -1, 9, 3); ctx.fillStyle = '#e8eef8'; ctx.fillRect(-1, 0, 5, 1); ctx.fillStyle = '#8a5a2a'; ctx.fillRect(-4, 0, 2, 1);
+        ctx.save(); ctx.translate(Math.round(b.x), Math.round(b.y)); ctx.rotate(b.ang + (evo ? G.t * 20 : 0));
+        const poly = (pts, c) => { ctx.fillStyle = c; ctx.beginPath(); ctx.moveTo(pts[0], pts[1]); for (let i = 2; i < pts.length; i += 2) ctx.lineTo(pts[i], pts[i + 1]); ctx.closePath(); ctx.fill(); };
+        poly([-11, -2, -6, -2, -6, -4, -4, -4, -4, -2, 5, -2, 10, 0, 5, 2, -4, 2, -4, 4, -6, 4, -6, 2, -11, 2], '#140c14');   // 테두리(손잡이·코등이·날)
+        poly([-4, -1, 5, -1, 8, 0, 5, 1, -4, 1], evo ? '#e0c8ff' : '#dfe8f4');                                                 // 날
+        ctx.fillStyle = '#ffffff'; ctx.fillRect(-3, -1, 8, 1);                                                                 // 날 빛
+        ctx.fillStyle = evo ? '#a070ff' : '#ffcf5a'; ctx.fillRect(-6, -3, 2, 6);                                               // 코등이
+        ctx.fillStyle = '#8a5a2a'; ctx.fillRect(-10, -1, 4, 2);                                                                // 손잡이
         ctx.restore();
       } else if (b.k === 'axe') {                     // 회전 도끼: 빙글빙글 + 도는 자리에 흐린 빛 고리(더하기 합성)
         const s = b.size;
