@@ -12,6 +12,15 @@
   }
   const P = () => SAVE.P;
   SFX.on = P().sound;
+  BGM.on = P().music !== false; BGM.vol = P().musicVol ?? 0.5;   // 배경음(10-22 · 기록에 없으면 켜짐·보통)
+  // 배경음 켜기·크기 줄(마을 설정 · 일시정지 설정에 같은 줄)
+  const musicRow = () => `<div class="row"><button id="bgm" class="${BGM.on ? 'on' : ''}">${BGM.on ? '배경음 켜짐' : '배경음 꺼짐'}</button>
+      <label class="vol">크기 <input id="bgmv" type="range" min="0" max="100" step="5" value="${Math.round(BGM.vol * 100)}"></label></div>`;
+  function bindMusic(box) {
+    box.querySelector('#bgm').onclick = e => { BGM.on = !BGM.on; P().music = BGM.on; SAVE.save(); e.target.classList.toggle('on', BGM.on); e.target.textContent = BGM.on ? '배경음 켜짐' : '배경음 꺼짐'; };
+    box.querySelector('#bgmv').oninput = e => { BGM.vol = e.target.value / 100; P().musicVol = BGM.vol; };
+    box.querySelector('#bgmv').onchange = () => SAVE.save();
+  }
   const fmtTime = t => { const s = Math.max(0, Math.floor(t)); return String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0'); };
   const clsOK = k => !!ART.heroes[k];                  // 그림이 있는 직업만 고를 수 있음
 
@@ -22,6 +31,7 @@
   let abilSig = '';
   function hud(G) {
     const p = G.p;
+    BGM.follow(G);                                    // 배경음: 그 던전 곡 · 보스가 있으면 보스 곡 · 6·9분에 세짐
     $('hLv').textContent = 'Lv ' + G.lv;
     $('hpFill').style.width = (100 * p.hp / p.maxHp) + '%';
     $('hpTxt').textContent = `${Math.ceil(p.hp)} / ${p.maxHp}`;
@@ -168,6 +178,7 @@
     ['xp', '경험치', (C, s) => '+' + pc(s), (C, v) => '+' + pc(v)],
     ['gold', '금화', (C, s) => '+' + pc(s), (C, v) => '+' + pc(v)],
     ['pickup', '줍는 거리', (C, s) => '+' + pc(s), (C, v) => '+' + pc(v)],
+    ['pierce', '관통', (C, s) => '+' + Math.round(s), (C, v) => '+' + Math.round(v)],
   ];
   function statTable(C, parts) {
     const SRC = [['bless', '축복'], ['gear', '장비'], ['card', '레벨업']];
@@ -186,6 +197,7 @@
     if (t) tab = t;
     HNS.pause(true);
     setMode(true);
+    BGM.follow(null);                                 // 마을 곡
     const done = HNS.checkAch();
     if (done.length) SAVE.save();
     const achNew = done.length;
@@ -331,13 +343,14 @@
   function townOpt(el) {
     const pf = P();
     const CTRL = [['auto', '자동'], ['stick', '조이스틱'], ['point', '누른 곳으로']];
-    el.innerHTML = `<div class="lbl">소리</div><div class="row"><button id="snd" class="${pf.sound ? 'on' : ''}">${pf.sound ? '효과음 켜짐' : '효과음 꺼짐'}</button></div>
+    el.innerHTML = `<div class="lbl">소리</div><div class="row"><button id="snd" class="${pf.sound ? 'on' : ''}">${pf.sound ? '효과음 켜짐' : '효과음 꺼짐'}</button></div>${musicRow()}
       <div class="lbl">조작 — 자동: 터치는 왼쪽 반 조이스틱 · 마우스는 누른 곳으로</div>
       <div class="row" id="pct">${CTRL.map(([k, t]) => `<button data-c="${k}" class="${pf.ctrl === k ? 'on' : ''}">${t}</button>`).join('')}</div>
       <div class="lbl">화면</div><div class="row"><button id="z0" class="${!pf.zoom ? 'on' : ''}">기본</button><button id="z1" class="${pf.zoom === 1 ? 'on' : ''}">크게</button><button id="z2" class="${pf.zoom === 2 ? 'on' : ''}">더 크게</button><button id="fs">전체 화면</button></div>
       <div class="lbl">시험용</div><div class="row"><button id="all">모두 열기(직업·던전·능력 + 금화 1만)</button><button id="wipe">기록 지우기</button></div>
       <p class="dim">기록은 이 브라우저에만 저장됩니다(홈 화면 앱도 같은 곳).</p>`;
     el.querySelector('#snd').onclick = () => { pf.sound = !pf.sound; SFX.on = pf.sound; SAVE.save(); click(); showTown('opt'); };
+    bindMusic(el);
     el.querySelectorAll('#pct button').forEach(b => b.onclick = () => { pf.ctrl = b.dataset.c; HNS.setCtrl(pf.ctrl); SAVE.save(); click(); showTown('opt'); });
     for (const z of [0, 1, 2]) el.querySelector('#z' + z).onclick = () => { pf.zoom = z; HNS.setZoom(z); SAVE.save(); click(); showTown('opt'); };
     el.querySelector('#fs').onclick = () => fullscreen();
@@ -348,7 +361,7 @@
     let armed = false;
     el.querySelector('#wipe').onclick = e => {
       if (!armed) { armed = true; e.target.textContent = '정말 지울까요? 한 번 더'; return; }
-      SAVE.reset(); SFX.on = SAVE.P.sound; HNS.setCtrl(SAVE.P.ctrl); HNS.setZoom(SAVE.P.zoom); showTown('go'); toast('기록을 지웠습니다');
+      SAVE.reset(); SFX.on = SAVE.P.sound; BGM.on = SAVE.P.music !== false; HNS.setCtrl(SAVE.P.ctrl); HNS.setZoom(SAVE.P.zoom); showTown('go'); toast('기록을 지웠습니다');
     };
   }
 
@@ -457,6 +470,7 @@
         <div class="lbl">이번 판에 주운 것(최근 것부터)</div><div class="items">${bag || '<p>아직 주운 장비 없음</p>'}</div></details>
       <details><summary>설정</summary>
         <div class="row"><button id="snd" class="${SFX.on ? 'on' : ''}">${SFX.on ? '효과음 켜짐' : '효과음 꺼짐'}</button><button id="pfs">전체 화면</button></div>
+        ${musicRow()}
         <div class="row" id="pct">${[['auto', '자동'], ['stick', '조이스틱'], ['point', '누른 곳으로']].map(([k, t]) => `<button data-c="${k}" class="${HNS.ctrl === k ? 'on' : ''}">${t}</button>`).join('')}</div>
         <div class="row"><button id="z0">화면 기본</button><button id="z1">크게</button><button id="z2">더 크게</button></div></details>
       <details><summary>시험 메뉴</summary>
@@ -467,6 +481,7 @@
         const it = G.bag.find(x => x.id === +card.dataset.id); if (it) { HNS.wear(it); close(); showPause(); }
       }; });
       box.querySelector('#snd').onclick = e => { SFX.on = !SFX.on; P().sound = SFX.on; SAVE.save(); e.target.classList.toggle('on', SFX.on); e.target.textContent = SFX.on ? '효과음 켜짐' : '효과음 꺼짐'; };
+      bindMusic(box);
       box.querySelector('#pfs').onclick = () => fullscreen();
       box.querySelectorAll('#pct button').forEach(b => b.onclick = () => {
         P().ctrl = b.dataset.c; HNS.setCtrl(b.dataset.c); SAVE.save();

@@ -92,6 +92,7 @@ const SFX = (() => {
   }
   return {
     play,
+    ctx,                                              // 배경음(js/bgm.js)이 같은 소리판을 씀(폰에서 판을 둘 만들지 않게)
     unlock() { if (on) ctx(); },
     get on() { return on; },
     set on(v) { on = !!v; if (on) ctx(); },

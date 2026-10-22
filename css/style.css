@@ -94,6 +94,8 @@ button.on { border-color: #8a80c0; }
 button:disabled { opacity: 0.45; }
 button.main { background: #7a3a2e; border-color: #9a4b3b; font-size: 17px; }
 button.inst { flex: 1; background: #2f6a3f; border-color: #9dffb4; }   /* 폰에 앱으로 설치(10-22) */
+.vol { display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--dim); }   /* 배경음 크기(10-22) */
+.vol input { width: 150px; accent-color: #ffcf5a; }
 button small { font-size: 11px; color: var(--dim); }
 .row { display: flex; gap: 6px; }
 .row button { flex: 1; }
