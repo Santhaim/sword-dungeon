@@ -7,11 +7,15 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <title>검사의 던전</title>
+<!-- 홈 화면 앱(크롬 「홈 화면에 추가 → 설치」) — 가로 · 전체 화면 · 오프라인 -->
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" href="icon-192.png">
 <!-- ?v= 는 폰 브라우저가 예전 파일을 붙잡지 않게(고칠 때마다 올림) -->
-<link rel="stylesheet" href="css/style.css?v=0.1">
+<link rel="stylesheet" href="css/style.css?v=0.46">
 </head>
 <body>
-<div id="app">
+<div id="app" class="town">
   <div id="stage"><canvas id="cv"></canvas></div>
   <div id="hud">
     <div id="stats">
@@ -19,11 +23,20 @@
       <div class="bars">
         <div class="bar hp"><b id="hpFill"></b><span id="hpTxt"></span></div>
         <div class="bar xp"><b id="xpFill"></b></div>
+        <div id="abil"></div>
+        <div id="buffs"></div>
       </div>
-      <div id="hKills">☠ 0</div>
     </div>
-    <button id="bPause" aria-label="일시정지">Ⅱ</button>
+    <div id="mid">
+      <div id="hTime">00:00</div>
+      <div id="bossBar" hidden><span id="bossName"></span><div class="bar boss"><b id="bossFill"></b></div></div>
+    </div>
+    <div id="right">
+      <div class="nums"><div id="hGold">💰 0</div><div id="hKills">☠ 0</div></div>
+      <button id="bPause" aria-label="일시정지">Ⅱ</button>
+    </div>
   </div>
+  <div id="loot"></div>
   <!-- 오른손 버튼(가로 화면 오른쪽 아래) -->
   <div id="pad">
     <button id="bUlt" class="sk ult"><i></i><span>필살</span></button>
@@ -32,12 +45,15 @@
     <button id="bDodge" class="sk dodge"><i></i><span>회피</span></button>
   </div>
   <div id="toast"></div>
+  <div id="banner"><small></small><b></b></div>
   <div id="rotate" hidden>가로로 돌리면 더 편해요</div>
   <div id="panel" hidden><div id="pbox"></div></div>
 </div>
-<script src="js/data.js?v=0.1"></script>
-<script src="art/art.js?v=0.1" onerror="window.ART_MISSING = true"></script>
-<script src="js/game.js?v=0.1"></script>
-<script src="js/main.js?v=0.1"></script>
+<script src="js/data.js?v=0.46"></script>
+<script src="js/save.js?v=0.46"></script>
+<script src="js/audio.js?v=0.46"></script>
+<script src="art/art.js?v=0.46"></script>
+<script src="js/game.js?v=0.46"></script>
+<script src="js/main.js?v=0.46"></script>
 </body>
 </html>
