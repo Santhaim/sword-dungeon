@@ -1116,12 +1116,14 @@ const HNS = (() => {
   function makeItem(rar) {
     const slot = pick(Object.keys(D.SLOTS));
     let bases = D.ITEM_BASES[slot];
-    if (slot === 'weapon') {                          // 내 무기 종류 · 던전 순서(1~4) 이하 단계만(뒤 던전일수록 좋은 무기가 섞임)
+    if (slot === 'weapon') bases = bases.filter(b => b[1] === G.C.weapon);   // 내 무기 종류만
+    if (bases[0][2]) {                                // 단계 있는 바탕(무기·갑옷): 던전 순서(1~4) 이하만 · 반은 그 던전 단계, 반은 아래 단계 고르게
       const order = D.DUNGEONS.indexOf(G.dun) + 1;
-      bases = bases.filter(b => b[1] === G.C.weapon && (b[2] || 1) <= order);
+      const top = bases.filter(b => b[2] === order), low = bases.filter(b => b[2] < order);
+      bases = low.length && (!top.length || Math.random() < 0.5) ? low : top;
     }
     const [name, icon, , imp] = pick(bases), R = D.ITEM_RARITY[rar];
-    const keys = Object.keys(D.AFFIXES).filter(k => D.AFFIXES[k].slots.includes(slot));
+    const keys = Object.keys(D.AFFIXES).filter(k => D.AFFIXES[k].slots.includes(slot) && !(imp && k in imp));   // 고유 성능과 같은 성질은 또 안 붙음(한 장에 «공격력» 두 줄 X)
     const aff = [];
     for (const k in imp || {}) aff.push({ k, v: imp[k], imp: true });   // 무기 고유 성능(맨 위 · 굵게)
     let n = 0;
@@ -2691,7 +2693,7 @@ const HNS = (() => {
   }
 
   return {
-    init, start, resize, useSkill, useUlt, dodge, useMove, img, pickCard, reroll, wear, finish, checkAch, nextPanel, profileStats, ultReady: () => !!G && G.ultCd <= 0,
+    init, start, resize, useSkill, useUlt, dodge, useMove, img, pickCard, reroll, wear, finish, checkAch, nextPanel, profileStats, itemScore, ultReady: () => !!G && G.ultCd <= 0,
     statParts: cls => cls ? statParts(equippedItems(cls), null) : statParts(G.worn, G.pass),   // cls 없으면 지금 판(레벨업 몫 포함)
     giveUp() { if (G && !G.over && !G.done) { G.over = true; G.gaveUp = true; } },
     get G() { return G; },

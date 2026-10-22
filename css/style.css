@@ -137,7 +137,21 @@ details > .row, details > .items { margin-top: 6px; }
 .items { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 6px; }
 .it { background: #232030; border: 1px solid var(--rc); border-left-width: 4px; border-radius: 8px; padding: 6px 8px; display: flex; flex-direction: column; gap: 4px; }
 .it .ih { display: grid; grid-template-columns: auto 1fr; column-gap: 6px; align-items: center; }
-.it .ii { grid-row: span 2; font-size: 22px; }
+/* 아이템 아이콘(10-22 도트 · js/icons.js): 등급 색 테 + 안쪽 은은한 빛 · 전설은 빛이 숨쉼 */
+.it .ii { grid-row: span 2; width: 38px; height: 38px; display: grid; place-items: center; border: 2px solid var(--rc); border-radius: 8px;
+          background: radial-gradient(circle at 50% 45%, color-mix(in srgb, var(--rc) 28%, transparent), rgba(10, 8, 16, 0.85) 70%); }
+.it.r3 .ii { box-shadow: 0 0 10px var(--rc); animation: glow 1.2s ease-in-out infinite alternate; }
+.ico { width: 32px; height: 32px; image-rendering: pixelated; display: block; }
+.ico.dim { opacity: 0.35; filter: grayscale(1); width: 24px; height: 24px; display: inline-block; vertical-align: middle; }
+.lt .ico { width: 20px; height: 20px; display: inline-block; vertical-align: -5px; }
+/* 낀 것과 견줌(10-22 «착용템이랑 인벤토리 템 수치 비교 +−») */
+.it em.up, .it i.cmp.up { color: #6aff8a; }
+.it em.dn, .it i.cmp.dn { color: #ff6a6a; }
+.it em { font-style: normal; font-weight: 700; font-size: 11px; margin-left: 4px; }
+.it i.cmp { font-style: normal; font-weight: 800; margin-left: 6px; }
+.it i.cmp.eq { color: var(--dim); }
+.it li.lost { color: #ff9a9a; }
+.it li.lost small { color: var(--dim); }
 .it .ih b { color: var(--rc); font-size: 14px; }
 .it .ih small { font-size: 11px; color: var(--dim); }
 /* 능력치 표(10-22): 이름 · 전체 값 · (축복·장비·레벨업으로 오른 몫) */

@@ -1,8 +1,8 @@
 // 홈 화면 앱(오프라인) — 네트워크 우선, 끊기면 캐시
 // GitHub Pages 는 파일마다 max-age=600 을 붙여 고친 판이 늦게 뜰 수 있음 → 같은 사이트 파일은 cache:'no-cache' 로 매번 «바뀌었나» 확인
-const CACHE = 'sword-dungeon-v6';
+const CACHE = 'sword-dungeon-v8';
 const FILES = ['./', 'index.html', 'manifest.webmanifest', 'icon-180.png', 'icon-192.png', 'icon-512.png',
-  'css/style.css', 'js/data.js', 'js/save.js', 'js/audio.js', 'js/bgm_data.js', 'js/bgm.js', 'js/game.js', 'js/main.js', 'art/art.js'];
+  'css/style.css', 'js/data.js', 'js/save.js', 'js/audio.js', 'js/bgm_data.js', 'js/bgm.js', 'js/icons.js', 'js/game.js', 'js/main.js', 'art/art.js'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES.map(f => new Request(f, { cache: 'no-cache' })))));

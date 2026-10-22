@@ -143,18 +143,44 @@
 
   // ── 아이템 글
   const SLOT_IC = { weapon: '⚔', armor: '🛡', ring: '💍', amulet: '📿' };
-  const itemIcon = it => ({ bow: '🏹', gun: '🔫', staff: '🪄' })[it.icon] || SLOT_IC[it.slot];
+  // 아이콘(10-22 «그럴싸하게» → js/icons.js 도트 그림)
+  const itemIcon = it => `<img class="ico" src="${ICONS.url(it)}" alt="">`;
+  const slotIcon = s => `<img class="ico dim" src="${ICONS.slotUrl(s)}" alt="">`;
   const itemName = it => (it.up ? `+${it.up} ` : '') + it.name;
-  function affLines(it) {
-    const s = D.affixScale(it.ilvl, it.up);
-    let h = it.aff.map(a => { const A = D.AFFIXES[a.k]; const v = a.v * s; return `<li class="${a.imp ? 'imp' : ''}">${A.name} ${v < 0 ? '−' + Math.round(-v * 100) + '%' : A.fmt(v)}</li>`; }).join('');
-    if (it.uniq) h += `<li class="uq">★ ${esc(D.UNIQUES[it.uniq].desc)}</li>`;
+  const statsOf = it => { const s = {}, k = D.affixScale(it.ilvl, it.up); for (const a of it.aff) s[a.k] = (s[a.k] || 0) + a.v * k; return s; };
+  const fmtGap = (k, v) => k === 'regen' ? Math.abs(v).toFixed(1) : k === 'lifesteal' ? (Math.abs(v) * 100).toFixed(1) + '%' : Math.round(Math.abs(v) * 100) + '%';
+  // 성질 줄 · vs = 비교할 «지금 낀 것»(10-22 사용자 «착용템이랑 인벤토리 템 수치 비교해서 +−») — 줄마다 ▲초록 / ▼빨강 · 낀 것에만 있던 성질은 «빠짐» 줄
+  //   (받는 피해·재사용 대기도 값이 클수록 좋음 → 모든 성질이 ▲ = 좋아짐)
+  function affLines(it, vs) {
+    const s = D.affixScale(it.ilvl, it.up), mine = statsOf(it), theirs = vs && vs !== 'empty' ? statsOf(vs) : vs === 'empty' ? {} : null, shown = new Set();
+    let h = it.aff.map(a => {
+      const A = D.AFFIXES[a.k], v = a.v * s;
+      let gap = '';
+      if (theirs && !shown.has(a.k)) {
+        shown.add(a.k);
+        const d = mine[a.k] - (theirs[a.k] || 0);
+        if (Math.abs(d) >= 0.004) gap = ` <em class="${d > 0 ? 'up' : 'dn'}">${d > 0 ? '▲' : '▼'}${fmtGap(a.k, d)}</em>`;
+      }
+      return `<li class="${a.imp ? 'imp' : ''}">${A.name} ${v < 0 ? '−' + Math.round(-v * 100) + '%' : A.fmt(v)}${gap}</li>`;
+    }).join('');
+    if (it.uniq) h += `<li class="uq">★ ${esc(D.UNIQUES[it.uniq].desc)}${vs && vs !== 'empty' && vs.uniq !== it.uniq ? ' <em class="up">새 효과</em>' : ''}</li>`;
+    if (theirs) {
+      for (const k in theirs) if (!(k in mine) && Math.abs(theirs[k]) >= 0.004) h += `<li class="lost">${D.AFFIXES[k].name} <em class="dn">▼${fmtGap(k, theirs[k])}</em> <small>빠짐</small></li>`;
+      if (vs !== 'empty' && vs.uniq && vs.uniq !== it.uniq) h += `<li class="lost">★ ${esc(D.UNIQUES[vs.uniq].name)} <small>효과 빠짐</small></li>`;
+    }
     return h;
   }
-  function itemHtml(it, attrs, extra) {
+  // 낀 것과 견준 한 줄 머리표: 칸이 비었으면 «빈 칸» · 아니면 점수(성질 크기·레벨·강화·전설)로 ▲ 좋아짐 / ▼ 나빠짐 / 비슷
+  function cmpBadge(it, vs) {
+    if (!vs) return '';
+    if (vs === 'empty') return '<i class="cmp up">▲ 빈 칸</i>';
+    const d = HNS.itemScore(it) - HNS.itemScore(vs);
+    return Math.abs(d) < 0.3 ? '<i class="cmp eq">≈ 비슷</i>' : d > 0 ? '<i class="cmp up">▲ 좋아짐</i>' : '<i class="cmp dn">▼ 나빠짐</i>';
+  }
+  function itemHtml(it, attrs, extra, vs) {           // vs = 견줄 «지금 낀 것»(빈 칸이면 'empty' · 안 견주면 없음)
     const R = D.ITEM_RARITY[it.rar];
-    return `<div class="it" ${attrs || ''} style="--rc:${R.color}"><div class="ih"><span class="ii">${itemIcon(it)}</span><b>${esc(itemName(it))}${it.isNew ? ' <i class="new">새</i>' : ''}</b>
-      <small>${R.name} · ${D.SLOTS[it.slot]} · Lv${it.ilvl}</small></div><ul>${affLines(it)}</ul>${extra || ''}</div>`;
+    return `<div class="it r${it.rar}" ${attrs || ''} style="--rc:${R.color}"><div class="ih"><span class="ii">${itemIcon(it)}</span><b>${esc(itemName(it))}${it.isNew ? ' <i class="new">새</i>' : ''}</b>
+      <small>${R.name} · ${D.SLOTS[it.slot]} · Lv${it.ilvl}${cmpBadge(it, vs)}</small></div><ul>${affLines(it, vs)}</ul>${extra || ''}</div>`;
   }
   const scrapOf = it => Math.round(D.ITEM_RARITY[it.rar].scrap * (1 + it.up * 0.3));
   const STAT_NAME = { dmg: '공격력', hp: '체력', speed: '이동 속도', atkspd: '공격 속도', crit: '치명타', critdmg: '치명 피해', cdr: '재사용 대기', lifesteal: '흡혈',
@@ -263,12 +289,14 @@
     const usable = it => it.slot !== 'weapon' || it.cls === cls;
     const slots = Object.keys(D.SLOTS).map(s => {
       const it = byId(eq[s]);
-      return `<div class="slot" data-s="${s}">${it ? itemHtml(it, `data-id="${it.id}"`) : `<div class="empty">${SLOT_IC[s]} ${D.SLOTS[s]} — 비어 있음</div>`}</div>`;
+      return `<div class="slot" data-s="${s}">${it ? itemHtml(it, `data-id="${it.id}"`) : `<div class="empty">${slotIcon(s)} ${D.SLOTS[s]} — 비어 있음</div>`}</div>`;
     }).join('');
     const worn = new Set(Object.values(eq));
+    // 창고 장비마다 같은 칸에 «지금 낀 것»과 견줌(낀 것·다른 직업 무기는 안 견줌)
+    const vsOf = it => worn.has(it.id) || !usable(it) ? null : byId(eq[it.slot]) || 'empty';
     const list = pf.stash.slice().sort((a, b) => b.rar - a.rar || b.ilvl - a.ilvl).map(it => itemHtml(it, `data-id="${it.id}"`,
       `<div class="row">${worn.has(it.id) ? '<button data-a="off">빼기</button>' : usable(it) ? '<button data-a="on">끼기</button>' : '<button disabled>다른 직업 무기</button>'}
-       <button data-a="scrap" ${worn.has(it.id) ? 'disabled' : ''}>분해 +${scrapOf(it)}💰</button></div>`)).join('');
+       <button data-a="scrap" ${worn.has(it.id) ? 'disabled' : ''}>분해 +${scrapOf(it)}💰</button></div>`, vsOf(it))).join('');
     // 한꺼번에 분해(10-22 주운 장비가 전부 창고로 들어오며 · 낀 것·전설은 빼고)
     const allWorn = new Set(); for (const c in pf.equip) for (const s in pf.equip[c]) allWorn.add(pf.equip[c][s]);
     const bulk = maxRar => pf.stash.filter(it => it.rar <= maxRar && !it.uniq && !allWorn.has(it.id));
@@ -459,9 +487,9 @@
     if (!G || G.over || G.done || !$('panel').hidden) return;
     HNS.pause(true);
     const slots = Object.keys(D.SLOTS);
-    const wornHtml = slots.map((s, i) => `<div class="slot">${G.worn[i] ? itemHtml(G.worn[i]) : `<div class="empty">${SLOT_IC[s]} ${D.SLOTS[s]} — 비어 있음</div>`}</div>`).join('');
-    const bag = G.bag.slice().reverse().map(it => { const i = slots.indexOf(it.slot), worn = G.worn[i] === it;   // 최근에 주운 것부터
-      return itemHtml(it, `data-id="${it.id}"`, `<div class="row"><button data-a="wear" ${worn ? 'disabled' : ''}>${worn ? '끼고 있음' : '끼기'}</button></div>`); }).join('');
+    const wornHtml = slots.map((s, i) => `<div class="slot">${G.worn[i] ? itemHtml(G.worn[i]) : `<div class="empty">${slotIcon(s)} ${D.SLOTS[s]} — 비어 있음</div>`}</div>`).join('');
+    const bag = G.bag.slice().reverse().map(it => { const i = slots.indexOf(it.slot), worn = G.worn[i] === it;   // 최근에 주운 것부터 · 지금 낀 것과 견줌
+      return itemHtml(it, `data-id="${it.id}"`, `<div class="row"><button data-a="wear" ${worn ? 'disabled' : ''}>${worn ? '끼고 있음' : '끼기'}</button></div>`, worn ? null : G.worn[i] || 'empty'); }).join('');
     open(`<h2>일시정지 <small>${fmtTime(G.t)} · ${G.dun.name}</small></h2>
       ${buildHtml(G)}
       <details open><summary>능력치 — 괄호 = 축복·장비·레벨업으로 오른 몫</summary>${statTable(G.C, HNS.statParts())}</details>
