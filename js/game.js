@@ -879,7 +879,8 @@ const HNS = (() => {
           a.t = (evo ? 1.2 : AB.cd[a.lv]) * cdMul();
           const vis = G.enemies.filter(e => !e.hidden && Math.abs(e.x - p.x) < VW / 2 && Math.abs(e.y - p.y) < VH / 2);
           vis.sort((x, y) => dist2(x, p) - dist2(y, p));
-          const n = evo ? 4 : AB.n[a.lv], dmg = dmgBase() * (evo ? 4.5 : AB.mul[a.lv]) * (1 + a.bonus);
+          // 10-23 사용자 «낮춰»: 뇌신 4.5배·튐 0.6 일 땐 다른 진화의 2~3배(측정 8,400) → 2.3배·튐 0.45
+          const n = evo ? 4 : AB.n[a.lv], dmg = dmgBase() * (evo ? 2.3 : AB.mul[a.lv]) * (1 + a.bonus);
           for (const e of vis.slice(0, n)) {
             zapAt(e, dmg);
             if (evo) {                                 // 뇌신: 3번 튐
@@ -889,7 +890,7 @@ const HNS = (() => {
                 near(from.x, from.y, 60, o => { if (o !== from && o.hp > 0) { const d = dist2(o, from); if (d < bd) { bd = d; nx = o; } } });
                 if (!nx) break;
                 G.fx.push({ k: 'chain', x: from.x, y: from.y - 6, x2: nx.x, y2: nx.y - 6, t: 0, dur: 0.18 });
-                hurtEnemy(nx, dmg * 0.6, 0, 0, 'abil'); from = nx;
+                hurtEnemy(nx, dmg * 0.45, 0, 0, 'abil'); from = nx;
               }
             }
           }
@@ -938,10 +939,11 @@ const HNS = (() => {
         if (a.t <= 0) {
           a.t = (evo ? 1.5 : AB.cd[a.lv]) * cdMul();
           const vis = G.enemies.filter(e => !e.hidden && Math.abs(e.x - p.x) < VW / 2 - 10 && Math.abs(e.y - p.y) < VH / 2 - 10);
-          const n = evo ? 5 : AB.n[a.lv], r = AB.r * (1 + G.st.area) * (evo ? 1.3 : 1), dmg = dmgBase() * (evo ? 4.5 : AB.mul[a.lv]) * (1 + a.bonus);
+          // 10-23 사용자 «낮춰»: 화산 4.5배·불바닥 2.5초일 땐 다른 진화의 3~4배(측정 12,900) → 1.5배·불바닥 2초
+          const n = evo ? 5 : AB.n[a.lv], r = AB.r * (1 + G.st.area) * (evo ? 1.3 : 1), dmg = dmgBase() * (evo ? 1.5 : AB.mul[a.lv]) * (1 + a.bonus);
           for (let i = 0; i < n && vis.length; i++) {
             const e = vis.splice(Math.floor(Math.random() * vis.length), 1)[0];
-            flameAt(e.x, e.y, r, dmg, evo ? 2.5 : (a.lv >= 5 ? 1.5 : 0));
+            flameAt(e.x, e.y, r, dmg, evo ? 2 : (a.lv >= 5 ? 1 : 0));
           }
         }
       } else if (a.k === 'miasma') {                  // 독 안개: 선 자리에 독 구름(dur 초 · 0.5초마다 독) · 진화 = 몸을 따라다니는 큰 구름(0.4초마다)
