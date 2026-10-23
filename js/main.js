@@ -236,6 +236,8 @@
       for (const a of done) loot(`🏆 ${esc(a.name)}`, '#ffcf5a');
     }, true);
   }
+  // 같은 탭을 다시 그림 — 창(스크롤) 위치는 그대로(10-23 사용자 «분해 누르면 창이 위로 올라감 · 강화하면 위치가 바뀜»)
+  function redrawTown() { const y = $('pbox').scrollTop; showTown(); $('pbox').scrollTop = y; }
   function townGo(el) {
     const pf = P();
     if (!clsOK(pf.cls) || !pf.unlocked.classes.includes(pf.cls)) pf.cls = 'swordsman';
@@ -276,8 +278,8 @@
         </div></details>
       </div></div>`;
     heroPreview(el.querySelector('#hero'), pf.cls);
-    el.querySelectorAll('#cls button').forEach(b => b.onclick = () => { click(); pf.cls = b.dataset.c; SAVE.save(); showTown('go'); });
-    el.querySelectorAll('#duns button').forEach(b => b.onclick = () => { click(); pf.dungeon = b.dataset.d; SAVE.save(); showTown('go'); });
+    el.querySelectorAll('#cls button').forEach(b => b.onclick = () => { click(); pf.cls = b.dataset.c; SAVE.save(); redrawTown(); });
+    el.querySelectorAll('#duns button').forEach(b => b.onclick = () => { click(); pf.dungeon = b.dataset.d; SAVE.save(); redrawTown(); });
     el.querySelector('#go').onclick = () => startRun();
     el.querySelector('#fs').onclick = async () => { await fullscreen(); startRun(); };
     const ib = el.querySelector('#inst');
@@ -292,23 +294,21 @@
       const it = byId(eq[s]);
       return `<div class="slot" data-s="${s}">${it ? itemHtml(it, `data-id="${it.id}"`, '<div class="row"><button data-a="off">해제</button></div>') : `<div class="empty">${slotIcon(s)} ${D.SLOTS[s]} — 비어 있음</div>`}</div>`;
     }).join('');
-    const worn = new Set(Object.values(eq));
-    const wornBy = {};                                   // 다른 직업이 장착한 것(목록엔 두되 표시 · 분해 막음)
-    for (const c in pf.equip) if (c !== cls) for (const s in pf.equip[c]) (wornBy[pf.equip[c][s]] = wornBy[pf.equip[c][s]] || []).push(D.CLASSES[c].name);
+    // 장착한 것(10-23 사용자 «다른 캐릭터가 장비하고 있는 것도 인벤토리에서 안 보이게») — 어느 직업이든 장착 중이면 창고 목록에서 뺌
+    const allWorn = new Set(); for (const c in pf.equip) for (const s in pf.equip[c]) allWorn.add(pf.equip[c][s]);
     // 창고 장비마다 같은 칸에 «지금 장착한 것»과 견줌(다른 직업 무기는 안 견줌)
     const vsOf = it => !usable(it) ? null : byId(eq[it.slot]) || 'empty';
-    const shown = pf.stash.filter(it => !worn.has(it.id)).sort((a, b) => b.rar - a.rar || b.ilvl - a.ilvl);
+    const shown = pf.stash.filter(it => !allWorn.has(it.id)).sort((a, b) => b.rar - a.rar || b.ilvl - a.ilvl || a.id - b.id);
     const list = shown.map(it => itemHtml(it, `data-id="${it.id}"`,
       `<div class="row">${usable(it) ? '<button data-a="on">장착</button>' : '<button disabled>다른 직업 무기</button>'}
-       <button data-a="scrap" ${wornBy[it.id] ? 'disabled' : ''}>분해 +${scrapOf(it)}💰</button></div>${wornBy[it.id] ? `<small class="dim">${wornBy[it.id].join('·')} 장착 중</small>` : ''}`, vsOf(it))).join('');
+       <button data-a="scrap">분해 +${scrapOf(it)}💰</button></div>`, vsOf(it))).join('');
     // 한꺼번에 분해(10-22 주운 장비가 전부 창고로 들어오며 · 장착한 것·전설은 빼고)
-    const allWorn = new Set(); for (const c in pf.equip) for (const s in pf.equip[c]) allWorn.add(pf.equip[c][s]);
     const bulk = maxRar => pf.stash.filter(it => it.rar <= maxRar && !it.uniq && !allWorn.has(it.id));
     const bulkBtn = (r, label) => { const xs = bulk(r); return `<button data-b="${r}" ${xs.length ? '' : 'disabled'}>${label} ${xs.length}개 분해 +${xs.reduce((a, it) => a + scrapOf(it), 0)}💰</button>`; };
     el.innerHTML = `<div class="lbl">${D.josa(D.CLASSES[cls].name, '이', '가')} 장착한 장비</div>
       <div class="slots">${slots}</div>
       <div class="lbl">능력치 <small class="dim">— 괄호 = 축복·장비로 오른 몫(판 안에선 레벨업 몫도 · 일시정지에서 봄)</small></div>${statTable(D.CLASSES[cls], HNS.statParts(cls))}
-      <div class="lbl">창고 ${shown.length}개 <small class="dim">— 장착한 것은 위에 · 던전에서 주운 장비는 모두 여기로(쓰러져도) · 장착 포함 ${pf.stash.length} / ${D.STASH_MAX} · 넘치면 장착 안 한 낮은 등급부터 분해</small></div>
+      <div class="lbl">창고 ${shown.length}개 <small class="dim">— 장착한 것(다른 직업 것도)은 빠짐 · 던전에서 주운 장비는 모두 여기로(쓰러져도) · 장착 포함 ${pf.stash.length} / ${D.STASH_MAX} · 넘치면 장착 안 한 낮은 등급부터 분해</small></div>
       <div class="row wrap">${bulkBtn(0, '일반')}${bulkBtn(1, '마법까지')}</div>
       <div class="items">${list || '<p>아직 없음 — 던전에서 주워 오세요</p>'}</div>`;
     el.querySelectorAll('button[data-b]').forEach(b => b.onclick = () => {
@@ -316,7 +316,7 @@
       const xs = new Set(bulk(+b.dataset.b));
       pf.gold += [...xs].reduce((a, it) => a + scrapOf(it), 0);
       pf.stash = pf.stash.filter(it => !xs.has(it)); SFX.play('coin');
-      SAVE.save(); showTown('gear');
+      SAVE.save(); redrawTown();
     });
     el.querySelectorAll('.slots .it, .items .it').forEach(card => card.querySelectorAll('button[data-a]').forEach(b => b.onclick = () => {
       click();
@@ -328,7 +328,7 @@
         for (const c in pf.equip) for (const s in pf.equip[c]) if (pf.equip[c][s] === it.id) delete pf.equip[c][s];
         pf.stash = pf.stash.filter(x => x !== it); pf.gold += scrapOf(it); SFX.play('coin');
       }
-      SAVE.save(); showTown('gear');
+      SAVE.save(); redrawTown();
     }));
   }
   function townBless(el) {
@@ -344,12 +344,13 @@
     el.querySelectorAll('button[data-k]').forEach(b => b.onclick = () => {
       const k = b.dataset.k, B = D.BLESS[k], lv = pf.bless[k] || 0, cost = D.blessCost(B, lv);
       if (lv >= B.max || pf.gold < cost) return;
-      pf.gold -= cost; pf.bless[k] = lv + 1; SAVE.save(); SFX.play('levelup'); showTown('bless');
+      pf.gold -= cost; pf.bless[k] = lv + 1; SAVE.save(); SFX.play('levelup'); redrawTown();
     });
   }
   function townSmith(el) {
     const pf = P(), S = D.SMITH;
-    const list = pf.stash.slice().sort((a, b) => b.rar - a.rar || b.up - a.up).map(it => {
+    // 순서 = 등급 · 아이템 레벨 · 얻은 순(10-23 사용자 «강화하면 위치가 바뀜» — 강화 단계로 줄 세우던 것을 뺌)
+    const list = pf.stash.slice().sort((a, b) => b.rar - a.rar || b.ilvl - a.ilvl || a.id - b.id).map(it => {
       const max = it.up >= S.max, cost = S.cost(it.up, it.rar);
       return itemHtml(it, `data-id="${it.id}"`, `<div class="row"><button data-a="up" ${max || pf.gold < cost ? 'disabled' : ''}>${max ? '최고 강화' : `+${it.up + 1} 강화 ${cost}💰`}</button></div>`);
     }).join('');
@@ -359,7 +360,7 @@
       if (!it || it.up >= S.max) return;
       const cost = S.cost(it.up, it.rar);
       if (pf.gold < cost) return;
-      pf.gold -= cost; it.up++; SAVE.save(); SFX.play('slam'); showTown('smith');
+      pf.gold -= cost; it.up++; SAVE.save(); SFX.play('slam'); redrawTown();
     }; });
   }
   function townAch(el) {
@@ -381,10 +382,10 @@
       <div class="lbl">화면</div><div class="row"><button id="z0" class="${!pf.zoom ? 'on' : ''}">기본</button><button id="z1" class="${pf.zoom === 1 ? 'on' : ''}">크게</button><button id="z2" class="${pf.zoom === 2 ? 'on' : ''}">더 크게</button><button id="fs">전체 화면</button></div>
       <div class="lbl">시험용</div><div class="row"><button id="all">모두 열기(직업·던전·능력 + 금화 1만)</button><button id="wipe">기록 지우기</button></div>
       <p class="dim">기록은 이 브라우저에만 저장됩니다(홈 화면 앱도 같은 곳).</p>`;
-    el.querySelector('#snd').onclick = () => { pf.sound = !pf.sound; SFX.on = pf.sound; SAVE.save(); click(); showTown('opt'); };
+    el.querySelector('#snd').onclick = () => { pf.sound = !pf.sound; SFX.on = pf.sound; SAVE.save(); click(); redrawTown(); };
     bindMusic(el);
-    el.querySelectorAll('#pct button').forEach(b => b.onclick = () => { pf.ctrl = b.dataset.c; HNS.setCtrl(pf.ctrl); SAVE.save(); click(); showTown('opt'); });
-    for (const z of [0, 1, 2]) el.querySelector('#z' + z).onclick = () => { pf.zoom = z; HNS.setZoom(z); SAVE.save(); click(); showTown('opt'); };
+    el.querySelectorAll('#pct button').forEach(b => b.onclick = () => { pf.ctrl = b.dataset.c; HNS.setCtrl(pf.ctrl); SAVE.save(); click(); redrawTown(); });
+    for (const z of [0, 1, 2]) el.querySelector('#z' + z).onclick = () => { pf.zoom = z; HNS.setZoom(z); SAVE.save(); click(); redrawTown(); };
     el.querySelector('#fs').onclick = () => fullscreen();
     el.querySelector('#all').onclick = () => {
       pf.unlocked.classes = Object.keys(D.CLASSES); pf.unlocked.dungeons = D.DUNGEONS.map(d => d.key);
