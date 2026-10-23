@@ -184,7 +184,8 @@
   }
   const scrapOf = it => Math.round(D.ITEM_RARITY[it.rar].scrap * (1 + it.up * 0.3));
   const STAT_NAME = { dmg: '공격력', hp: '체력', speed: '이동 속도', atkspd: '공격 속도', crit: '치명타', critdmg: '치명 피해', cdr: '재사용 대기', lifesteal: '흡혈',
-                      armor: '받는 피해', xp: '경험치', gold: '금화', pickup: '줍는 거리', area: '범위', skill: '스킬 피해', regen: '초당 회복', reroll: '다시 뽑기', revive: '두 번째 목숨' };
+                      armor: '받는 피해', xp: '경험치', gold: '금화', pickup: '줍는 거리', area: '범위', skill: '스킬 피해', regen: '초당 회복', reroll: '다시 뽑기', revive: '두 번째 목숨',
+                      ultc: '필살 충전' };
   // 능력치 표(10-22 사용자 «전체 능력치 + 레벨업 스킬·장비로 오른 몫은 () 안에»)
   //   [열쇠, 이름, 전체 값(직업, 합), 오른 몫(직업, 몫), 0 이어도 늘 보임]
   const pc = v => Math.round(v * 100) + '%';
@@ -192,13 +193,14 @@
     ['hp', '체력', (C, s) => Math.round(C.hp * (1 + s)), (C, v) => '+' + Math.round(C.hp * v), 1],
     ['dmg', '공격력', (C, s) => +(C.dmg * (1 + s)).toFixed(1), (C, v) => '+' + +(C.dmg * v).toFixed(1), 1],
     ['atkspd', '공격 속도', (C, s) => '+' + pc(s), (C, v) => '+' + pc(v), 1],
-    ['speed', '이동 속도', (C, s) => Math.round(C.speed * (1 + s)), (C, v) => '+' + Math.round(C.speed * v), 1],
+    ['speed', '이동 속도', (C, s) => Math.round(C.speed * (1 + Math.min(D.SPEED_CAP, s))), (C, v) => '+' + Math.round(C.speed * v), 1],
     ['crit', '치명타', (C, s) => pc(Math.min(0.75, D.CRIT.chance + s)), (C, v) => '+' + pc(v), 1],
     ['critdmg', '치명 피해', (C, s) => '×' + (D.CRIT.mul + s).toFixed(2), (C, v) => '+' + pc(v), 1],
     ['regen', '초당 회복', (C, s) => (C.regen + s).toFixed(1), (C, v) => '+' + v.toFixed(1), 1],
     ['skill', '스킬 피해', (C, s) => '+' + pc(s), (C, v) => '+' + pc(v)],
     ['area', '범위', (C, s) => '+' + pc(s), (C, v) => '+' + pc(v)],
     ['cdr', '재사용 대기', (C, s) => '−' + pc(Math.min(0.6, s)), (C, v) => '−' + pc(v)],
+    ['ultc', '필살 충전', (C, s) => '+' + pc(s), (C, v) => '+' + pc(v)],
     ['armor', '받는 피해', (C, s) => '−' + pc(Math.min(0.7, s)), (C, v) => '−' + pc(v)],
     ['lifesteal', '흡혈', (C, s) => (s * 100).toFixed(1) + '%', (C, v) => '+' + (v * 100).toFixed(1) + '%'],
     ['xp', '경험치', (C, s) => '+' + pc(s), (C, v) => '+' + pc(v)],
@@ -267,6 +269,7 @@
         ${installEvt ? '<div class="row"><button id="inst" class="inst">📲 폰에 앱으로 설치</button></div>' : ''}
         <div class="row"><button id="fs">전체 화면으로 출정</button><button class="main" id="go">출정</button></div>
         ${goal}
+        <details class="pst" open><summary>${C.name} 능력치 <small class="dim">— 괄호 = 축복·장비로 오른 몫</small></summary>${statTable(C, HNS.statParts(pf.cls))}</details>
         <details><summary>조작법</summary><div class="help">
           <b>왼손</b><span>화면 왼쪽을 눌러 끌면 이동</span>
           <b>공격</b><span>적이 가까이 오면 저절로(검사 3연타 · 궁수 화살)</span>
@@ -274,7 +277,7 @@
           <b>키보드</b><span>WASD·방향키 이동 · Space 직업 기술 · 3 필살기 · Esc 일시정지 · 마우스는 누른 곳으로</span>
           <b>장비</b><span>주우면 더 좋을 때 바로 장착(아니면 오른쪽 위 «장착» 단추) · 주운 건 모두 창고로(쓰러져도)</span>
           <b>설치</b><span>크롬 ⋮ 메뉴 → «홈 화면에 추가» → «설치» · 아이폰은 사파리 공유 단추 → «홈 화면에 추가»</span>
-          <b>요령</b><span>몬스터는 공격 전에 빨갛게 예고 — 그때 비키거나 회피 · 금 간 기둥은 베면 무너짐</span>
+          <b>요령</b><span>몬스터는 공격 전에 빨갛게 예고 — 그때 비키거나 회피 · 항아리는 부딪히거나 때리면 깨짐(회복약·자석·금화 · 드물게 숨은 상자)</span>
         </div></details>
       </div></div>`;
     heroPreview(el.querySelector('#hero'), pf.cls);
@@ -333,11 +336,16 @@
   }
   function townBless(el) {
     const pf = P();
-    el.innerHTML = `<p>금화로 영구 강화 — 모든 직업에 적용</p><div class="bl">${Object.entries(D.BLESS).map(([k, b]) => {
+    // 효과 글(10-23): «이름 지금 → 다음» · 받는 피해·재사용 대기는 «−» · 1.5% 같은 몫은 소수 한 자리까지
+    const nameOf = (k, b) => k === 'regen' ? '초당 회복' : k === 'reroll' ? '카드 다시 뽑기' : STAT_NAME[b.stat];
+    const valOf = (k, b, n) => k === 'regen' ? '+' + (b.v * n).toFixed(1) : k === 'reroll' ? n + '번' :
+      (b.stat === 'armor' || b.stat === 'cdr' ? '−' : '+') + +(b.v * 100 * n).toFixed(1) + '%';
+    el.innerHTML = `<p>금화로 영구 강화 — 모든 직업에 적용 <small class="dim">(능력치는 출정·장비 탭에서)</small></p><div class="bl">${Object.entries(D.BLESS).map(([k, b]) => {
       const lv = pf.bless[k] || 0, max = lv >= b.max, cost = D.blessCost(b, lv);
-      const eff = k === 'regen' ? `초당 회복 +${(b.v * (lv + (max ? 0 : 1))).toFixed(1)}` : k === 'reroll' ? `카드 다시 뽑기 ${lv + (max ? 0 : 1)}번` :
-                  k === 'revive' ? '판마다 한 번 되살아남' : `${STAT_NAME[b.stat]} +${Math.round(b.v * 100 * (lv + (max ? 0 : 1)))}%`;
-      return `<div class="b"><span class="bi">${b.icon}</span><div><b>${b.name}</b><small>${max ? '최고 단계' : '다음: ' + eff}</small>
+      const eff = k === 'revive' ? (max ? '최고 단계 · ' : '') + '판마다 한 번 되살아남'
+        : max ? `최고 단계 · ${nameOf(k, b)} ${valOf(k, b, lv)}`
+        : lv ? `${nameOf(k, b)} ${valOf(k, b, lv)} → ${valOf(k, b, lv + 1)}` : `다음: ${nameOf(k, b)} ${valOf(k, b, 1)}`;
+      return `<div class="b"><span class="bi">${b.icon}</span><div><b>${b.name} <small class="dim">${lv} / ${b.max}</small></b><small>${eff}</small>
         <div class="pips">${Array.from({ length: b.max }, (_, i) => `<i class="${i < lv ? 'on' : ''}"></i>`).join('')}</div></div>
         <button data-k="${k}" ${max || pf.gold < cost ? 'disabled' : ''}>${max ? '끝' : cost + '💰'}</button></div>`;
     }).join('')}</div>`;

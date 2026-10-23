@@ -189,7 +189,7 @@ const HNS = (() => {
     const st = Object.assign(STAT0(), G.base);
     for (const k in G.pass) st[D.PASSIVES[k].stat] += G.pass[k].v;
     for (const it of G.worn) if (it) for (const a of it.aff) st[a.k] = (st[a.k] || 0) + a.v * D.affixScale(it.ilvl, it.up);
-    st.cdr = Math.min(0.6, st.cdr); st.armor = Math.min(0.7, st.armor); st.crit = Math.min(0.75, st.crit);
+    st.cdr = Math.min(0.6, st.cdr); st.armor = Math.min(0.7, st.armor); st.crit = Math.min(0.75, st.crit); st.speed = Math.min(D.SPEED_CAP, st.speed);
     G.st = st;
     G.uniq = new Set(G.baseUniq);
     for (const it of G.worn) if (it && it.uniq) G.uniq.add(it.uniq);

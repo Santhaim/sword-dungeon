@@ -100,7 +100,8 @@ const DATA = (() => {
   // 흡혈로 차는 체력은 초당 최대 체력의 이만큼까지 — «가만히 서 있으면 안 죽음»의 진짜 원인(무리 속 광역 흡혈 초당 10+)을 막는 손잡이
   //   봇: 흡혈 5% 장비로 가만히 서 있기 상한 없음 600초+ 생존 → 2% 면 379초 · 3%(무적 0.32) 면 262·390초 · 10-22 사용자 «5% 로 해 보자» → 5%
   //   5%(무적 0.25) 시험: 가만히 서 있기(흡혈 5% 장비) 322·225초에 쓰러짐 · 흡혈 3% 장비로 움직이면 400초 2/2(2% 도 2/2) · 흡혈 없이 시작한 봇은 상한과 무관(검사 1/4·궁수 1/2)
-  D.LEECH_CAP = 0.05;
+  //   10-23 흡혈 축복(최대 5%)을 넣고 재 보니 후반엔 축복 5% 만으로 통에 닿아 카드·장비 흡혈이 거의 쓸모없음(5%·13%·30% 모두 초당 ≈3.5) → 사용자 «상한을 올려» → 8%
+  D.LEECH_CAP = 0.08;
 
   // ── 카드 등급(홀즈 오브 토먼트처럼 색) — 수치 배율 · 나올 무게
   D.RARITY = [
@@ -373,17 +374,32 @@ const DATA = (() => {
   D.SMITH = { max: 10, cost: (up, rar) => Math.round((40 + up * up * 15) * (1 + rar * 0.6)) };
 
   // ── 축복(판 밖 영구 강화 · 금화)
+  //   10-23 사용자 «축복 효과를 더 · 업그레이드 등급을 10단계로» → 수치 축복은 모두 10단계(한 단계 몫은 그대로 = 이미 산 단계는 손해 없음) · 새 8종
+  //   횟수 축복은 예외: 다시 뽑기 3 → 5번 · 두 번째 목숨은 1번 그대로 / 같은 성질의 패시브와 아이콘을 같이 씀 / 순서 = 버티기 → 때리기 → 기술 → 다니기 → 벌이 → 횟수
   D.BLESS = {
     hp: { name: '굳센 몸', icon: '❤', max: 10, stat: 'hp', v: 0.05, cost: 60 },
+    armor: { name: '단단한 살갗', icon: '🛡', max: 10, stat: 'armor', v: 0.015, cost: 100 },
+    regen: { name: '되살아남', icon: '✚', max: 10, stat: 'regen', v: 0.2, cost: 80 },
+    // 흡혈(10-23 사용자 «흡혈도 최대 5% 정도») — 흡혈 % 자체엔 상한 없음 · 실제로 차는 체력은 흡혈 통(LEECH_CAP · 초당 최대 체력 5%)에서 막힘
+    lifesteal: { name: '피의 갈증', icon: '🩸', max: 10, stat: 'lifesteal', v: 0.005, cost: 120 },
     dmg: { name: '날 선 손', icon: '⚔', max: 10, stat: 'dmg', v: 0.04, cost: 60 },
-    speed: { name: '가벼운 발', icon: '👟', max: 5, stat: 'speed', v: 0.03, cost: 90 },
-    regen: { name: '되살아남', icon: '✚', max: 5, stat: 'regen', v: 0.2, cost: 80 },
-    crit: { name: '매의 눈', icon: '🎯', max: 5, stat: 'crit', v: 0.01, cost: 100 },
-    xp: { name: '배움', icon: '📖', max: 5, stat: 'xp', v: 0.05, cost: 80 },
-    gold: { name: '재물운', icon: '💰', max: 5, stat: 'gold', v: 0.08, cost: 80 },
-    reroll: { name: '다시 뽑기', icon: '🔁', max: 3, stat: 'reroll', v: 1, cost: 250 },
+    atkspd: { name: '날랜 손', icon: '✋', max: 10, stat: 'atkspd', v: 0.02, cost: 90 },
+    crit: { name: '매의 눈', icon: '🎯', max: 10, stat: 'crit', v: 0.01, cost: 100 },
+    critdmg: { name: '급소', icon: '💢', max: 10, stat: 'critdmg', v: 0.05, cost: 80 },
+    skill: { name: '깊은 마력', icon: '🔮', max: 10, stat: 'skill', v: 0.04, cost: 80 },
+    area: { name: '넓은 기운', icon: '⭕', max: 10, stat: 'area', v: 0.03, cost: 80 },
+    cdr: { name: '고요한 마음', icon: '🧘', max: 10, stat: 'cdr', v: 0.015, cost: 100 },
+    ultc: { name: '필살 충전', icon: '🔋', max: 10, stat: 'ultc', v: 0.03, cost: 100 },
+    speed: { name: '가벼운 발', icon: '👟', max: 10, stat: 'speed', v: 0.03, cost: 90 },
+    pickup: { name: '끌어당김', icon: '🧲', max: 10, stat: 'pickup', v: 0.08, cost: 50 },
+    xp: { name: '배움', icon: '📖', max: 10, stat: 'xp', v: 0.05, cost: 80 },
+    gold: { name: '재물운', icon: '💰', max: 10, stat: 'gold', v: 0.08, cost: 80 },
+    reroll: { name: '다시 뽑기', icon: '🔁', max: 5, stat: 'reroll', v: 1, cost: 250 },
     revive: { name: '두 번째 목숨', icon: '🕊', max: 1, stat: 'revive', v: 1, cost: 1200 },
   };
+  // 이동 속도 합계 상한(축복 + 장비 + 레벨업 카드) — 10-23 처음 0.6 → 사용자 «100%로»(0.6 이면 상한 없던 공개판에서 80%+ 나오던 빌드가 느려졌음)
+  //   지금 빌드는 그대로 두고 전설 둘을 +10 까지 한 것 같은 극단만 막음
+  D.SPEED_CAP = 1.0;
   D.blessCost = (b, lv) => Math.round(b.cost * 1.6 * Math.pow(lv + 1, 1.7));     // 앞 단계는 싸고 뒤로 갈수록 비쌈(오래 키우는 맛)
 
   // ── 도전 과제(홀즈: 늘 다음 목표 · 보상 = 금화·해금)
