@@ -119,7 +119,7 @@
     e.preventDefault(); installEvt = e;
     if ($('app').classList.contains('town') && tab === 'go') showTown('go');
   });
-  window.addEventListener('appinstalled', () => { installEvt = null; toast('설치했습니다 — 홈 화면의 «검사의 던전»으로 여세요'); });
+  window.addEventListener('appinstalled', () => { installEvt = null; toast('설치했습니다 — 홈 화면의 «던전 원정대»로 여세요'); });
 
   // 주인공 미리보기(서기 → 걷기 → 3연타/활)
   function heroPreview(c, cls) {
@@ -228,7 +228,7 @@
     if (done.length) SAVE.save();
     const achNew = done.length;
     open(`<div class="town">
-      <div class="th"><b>검사의 던전</b><span class="gold">💰 ${P().gold}</span></div>
+      <div class="th"><b>던전 원정대</b><span class="gold">💰 ${P().gold}</span></div>
       <div class="tabs">${TABS.map(([k, n]) => `<button data-t="${k}" class="${tab === k ? 'on' : ''}">${n}${k === 'ach' && achNew ? ' •' : ''}</button>`).join('')}</div>
       <div class="tc" id="tc"></div></div>`, box => {
       box.querySelectorAll('.tabs button').forEach(b => b.onclick = () => { click(); showTown(b.dataset.t); });
