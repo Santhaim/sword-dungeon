@@ -45,7 +45,9 @@ const HNS = (() => {
     VW = cv.width / S; VH = cv.height / S;
   }
 
-  // ── 바닥·기둥·세운 장식(256px 덩어리마다 같은 씨앗 → 늘 같은 배치) · 금 간 기둥 = 비밀 상자(해머워치)
+  // ── 바닥·항아리·세운 장식(256px 덩어리마다 같은 씨앗 → 늘 같은 배치)
+  //   10-23 사용자 «경험치 먹느라 주변만 왔다갔다 → 벽(기둥)을 없애고 항아리를 많이» → 기둥은 더 안 놓음(충돌·그리기 코드는 남김)
+  //   항아리 = 무리 지어 · 닿거나 때리면 깨짐(회복약·자석·금화·드물게 숨은 상자) · 깨진 건 G.potsBroken 에 적어 덩어리를 다시 만들어도 안 돌아옴
   function hash(x, y) { let h = (x * 374761393 + y * 668265263) | 0; h = (h ^ (h >>> 13)) * 1274126177; return ((h ^ (h >>> 16)) >>> 0) / 4294967296; }
   function seeded(seed) { let s = seed >>> 0; return () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; }; }
   function chunkInfo(cx, cy) {
@@ -56,15 +58,25 @@ const HNS = (() => {
     inf = { solid: [] };
     const ox = cx * CHUNK, oy = cy * CHUNK;
     const clear = (x, y, m) => Math.hypot(x, y) > 70 && inf.solid.every(o => Math.abs(o.x - x) > m + 18 || Math.abs(o.y - y) > m + 18);
-    const pb = A.pillar.box;
-    for (let k = 0, n = r() < 0.5 ? 1 : (r() < 0.6 ? 2 : 0); k < n; k++) {
-      const x = ox + 24 + Math.floor(r() * (CHUNK - 48)), y = oy + 52 + Math.floor(r() * (CHUNK - 64));
-      if (clear(x, y, 30)) inf.solid.push({ kind: 'pillar', x, y, x0: x - pb[0] / 2, y0: y - pb[1], x1: x + pb[0] / 2, y1: y, crack: r() < 0.06, hp: 3 });
-    }
     if (r() < 0.045 && Math.hypot(cx, cy) > 1) {        // 제단(해머워치식 발견): 밟으면 잠깐 힘이 남
       const x = ox + 40 + Math.floor(r() * (CHUNK - 80)), y = oy + 40 + Math.floor(r() * (CHUNK - 80));
       if (clear(x, y, 16)) inf.solid.push({ kind: 'shrine', x, y, r: 0, type: SHRINES[Math.floor(r() * SHRINES.length)] });
     }
+    const T = D.POT;
+    let pk = 0;
+    const pot = (x, y) => {                             // 모양·번호는 늘 같은 순서로 뽑음(깨진 것도 자리는 차지 → 다시 만들어도 배치 그대로)
+      const id = key + '#' + (pk++), u = r(), v = u < 0.45 ? 0 : u < 0.7 ? 1 : 2;
+      if (Math.hypot(x, y) > 70 && inf.solid.every(o => Math.hypot(o.x - x, o.y - y) > (o.kind === 'pot' ? 13 : 27)))
+        inf.solid.push({ kind: 'pot', id, x, y, v, gone: G.potsBroken.has(id) });
+    };
+    if (r() < T.group) {                                // 무리: 가운데에서 22px 안에 2~4개
+      const gx = ox + 30 + r() * (CHUNK - 60), gy = oy + 30 + r() * (CHUNK - 60);
+      for (let k = 0, n = T.groupN[0] + Math.floor(r() * (T.groupN[1] - T.groupN[0] + 1)); k < n; k++) {
+        const a = r() * Math.PI * 2, d = 6 + r() * 16;
+        pot(Math.round(gx + Math.cos(a) * d), Math.round(gy + Math.sin(a) * d * 0.7));
+      }
+    }
+    if (r() < T.single) pot(ox + 20 + Math.floor(r() * (CHUNK - 40)), oy + 20 + Math.floor(r() * (CHUNK - 40)));
     const names = Object.keys(A.props);
     for (let k = 0, n = Math.floor(r() * 4); k < n; k++) {
       const name = names[Math.floor(r() * names.length)], o = A.props[name];
@@ -205,8 +217,8 @@ const HNS = (() => {
       enemies: [], eproj: [], pproj: [], tele: [], sched: [], gems: [], coins: [], drops: [], ghosts: [], fx: [], nums: [], parts: [],
       bag: [], spawnT: 0.5, eliteT: 60, waves: {}, midDone: false, bossDone: false, boss: null, cleared: false, buff: { fury: 0, swift: 0 },
       ammo: D.GUN.mag, reloadT: 0, barrage: null, blizzard: null,
-      levelQueue: 0, paused: false, over: false, god: false, uid: 1, hitStop: 0, shake: 0,
-      run: { elites: 0, chests: 0, legends: 0, evos: 0, dodges: 0, ultKillsMax: 0, goblins: 0, secrets: 0, kills: {}, bosses: {} },
+      levelQueue: 0, paused: false, over: false, god: false, uid: 1, hitStop: 0, shake: 0, potsBroken: new Set(),
+      run: { elites: 0, chests: 0, legends: 0, evos: 0, dodges: 0, ultKillsMax: 0, goblins: 0, secrets: 0, pots: 0, kills: {}, bosses: {} },
     };
     recalc();
     G.p.hp = G.p.maxHp;
@@ -417,7 +429,7 @@ const HNS = (() => {
       const ux = d > 0.1 ? dx / d : Math.cos(ang), uy = d > 0.1 ? dy / d : Math.sin(ang);
       if (hurtEnemy(e, dmg, ux * kb, uy * kb, kind || 'atk')) n++;
     });
-    breakPillars(p.x, p.y, range, ang, arc);
+    breakPots(p.x, p.y, range, ang, arc);
     if (n) {
       // 화면 전체 멈춤(타격 정지)은 일반 공격만 — 스킬·필살은 흔들림·번쩍임으로(10-22 «스킬 쓰면 끊김»: 멈춤이 겹쳐 0.06~0.16초씩 섰음)
       if (!kind || kind === 'atk') G.hitStop = Math.max(G.hitStop, D.HIT_STOP);
@@ -425,19 +437,32 @@ const HNS = (() => {
     }
     return n;
   }
-  function breakPillars(x, y, range, ang, arc) {      // 금 간 기둥은 베면 무너지고 비밀 상자(해머워치)
+  function breakPots(x, y, range, ang, arc) {         // 베기·폭발 범위 안 항아리를 깸(부채꼴이면 그 방향만)
     const cx = Math.floor(x / CHUNK), cy = Math.floor(y / CHUNK);
     for (let gx = cx - 1; gx <= cx + 1; gx++) for (let gy = cy - 1; gy <= cy + 1; gy++) for (const o of chunkInfo(gx, gy).solid) {
-      if (!o.crack || o.gone) continue;
-      const qx = clamp(x, o.x0, o.x1), qy = clamp(y, o.y0, o.y1), d = Math.hypot(qx - x, qy - y);
-      if (d > range + 4) continue;
-      if (arc < 360 && d > 6 && Math.abs(angDiff(Math.atan2(qy - y, qx - x), ang)) > arc * Math.PI / 360 + 0.4) continue;
-      if (--o.hp > 0) { G.fx.push({ k: 'spark', x: qx, y: qy - 8, t: 0, dur: 0.2 }); sfx('ehit'); continue; }
-      o.gone = true; G.run.secrets++;
-      G.fx.push({ k: 'rubble', x: (o.x0 + o.x1) / 2, y: o.y1, t: 0, dur: 0.6 });
-      G.drops.push({ k: 'chest', n: 1, x: (o.x0 + o.x1) / 2, y: o.y1 - 6, t: 0, secret: true });
-      for (let i = 0; i < 6; i++) G.coins.push({ x: o.x + rand(-12, 12), y: o.y + rand(-10, 4), v: 3, pull: false });
-      sfx('slam'); hooks.toast && hooks.toast('숨은 상자를 찾았다!');
+      if (o.kind !== 'pot' || o.gone) continue;
+      const qy = o.y - 5, d = Math.hypot(o.x - x, qy - y);
+      if (d > range + 6) continue;
+      if (arc < 360 && d > 6 && Math.abs(angDiff(Math.atan2(qy - y, o.x - x), ang)) > arc * Math.PI / 360 + 0.4) continue;
+      smashPot(o);
+    }
+  }
+  function smashPot(o) {                              // 항아리 깨짐: 조각이 튀고 · 하나만 나옴(숨은 상자 → 자석 → 회복약 → 금화 → 빈 것)
+    if (o.gone) return;
+    o.gone = true; G.potsBroken.add(o.id); G.run.pots++;
+    const pal = D.POT_ART.pals[G.dun.key] || D.POT_ART.pals.crypt;
+    burst(o.x, o.y - 4, 10, [pal[3], pal[4], pal[2], pal[1]], { spd: [25, 75], up: [30, 80], life: [0.35, 0.65], size: 2 });
+    G.fx.push({ k: 'shards', x: o.x, y: o.y, t: 0, dur: 2.2, c: pal.slice(1, 5), seed: Math.abs(o.x * 7 + o.y * 13) % 97 });
+    sfx('pot');
+    const T = D.POT, u = Math.random();
+    if (u < T.chest) {
+      G.run.secrets++;
+      G.drops.push({ k: 'chest', n: 1, x: o.x, y: o.y, t: 0, secret: true });
+      hooks.toast && hooks.toast('항아리 속에 숨은 상자!');
+    } else if (u < T.chest + T.magnet) G.drops.push({ k: 'magnet', x: o.x, y: o.y, t: 0 });
+    else if (u < T.chest + T.magnet + T.heal) G.drops.push({ k: 'potion', x: o.x, y: o.y, t: 0 });
+    else if (u < T.chest + T.magnet + T.heal + T.gold) {
+      for (let i = 0, n = 1 + (Math.random() < 0.5 ? 1 : 0); i < n; i++) G.coins.push({ x: o.x + rand(-6, 6), y: o.y + rand(-4, 3), v: 1 + Math.floor(G.dun.tier), pull: false });
     }
   }
   function playAct(act, fd, hit, onHit, ang) {
@@ -527,7 +552,7 @@ const HNS = (() => {
       burst(x, y, 5, ['#6a6070', '#8a8296'], { spd: [8, 24], up: [12, 26], g: -6, life: [0.5, 0.9], size: 2 });
     }
     near(x, y, r + 20, e => { if (Math.hypot(e.x - x, (e.y - y) / SQ) < r + e.r) hurtEnemy(e, dmg, (e.x - x) * 0.8, (e.y - y) * 0.8, kind); });
-    breakPillars(x, y, r * 0.6, 0, 360);
+    breakPots(x, y, r * 0.8, 0, 360);
   }
   // 스킬 이펙트(10-22 사용자 «스킬 이펙트가 너무 없음»): 입자 터짐 · 충격파 고리 · 화면 번쩍임
   //   burst = 바닥 (x, y) 에서 n 개를 사방으로(속도 spd · 위로 up · 중력 g · 수명 life) — 260 개를 넘으면 더 안 만듦(폰)
@@ -650,7 +675,7 @@ const HNS = (() => {
               if (sk.stagger && !e.boss && e.hp > 0 && e.st === 'wind') { e.st = 'rec'; e.stT = 0; e.at = sk.stagger; }
             });
             if (G.uniq.has('bloodedge') && Math.min(5, hits) > healed) { heal(G.p.maxHp * 0.02 * (Math.min(5, hits) - healed), true); healed = Math.min(5, hits); }   // 피의 칼날(전설)
-            breakPillars(x, y, rr * 0.6, 0, 360);
+            breakPots(x, y, rr * 0.8, 0, 360);
           });
         }
       }, a0);
@@ -1800,7 +1825,13 @@ const HNS = (() => {
       }
     }
     G.enemies = G.enemies.filter(e => e.hp > 0);
-    // 주인공 탄(검기·화살·총알·마법탄·얼음 조각·비수)
+    // 주인공 탄(검기·화살·총알·마법탄·얼음 조각·비수) — 지나가는 항아리도 깸(탄은 그대로 날아감)
+    const potsNear = [];
+    {
+      const cx = Math.floor(p.x / CHUNK), cy = Math.floor(p.y / CHUNK);
+      for (let gx = cx - 2; gx <= cx + 2; gx++) for (let gy = cy - 2; gy <= cy + 2; gy++)
+        for (const o of chunkInfo(gx, gy).solid) if (o.kind === 'pot' && !o.gone) potsNear.push(o);
+    }
     for (const b of G.pproj) {
       b.life -= dt;
       if (b.home && b.home.hp > 0) {                  // 마법탄·추적 화살·비전 구슬: 겨눈 적 쪽으로 조금씩 꺾임(turn = 초당 꺾는 각)
@@ -1848,6 +1879,7 @@ const HNS = (() => {
         if (--b.pierce < 0) b.life = 0;
       });
       if (b.k !== 'wave' && !b.axe && !b.tw && pillarAt(b.x, b.y + 8)) b.life = 0;   // 검기·도끼·회오리는 기둥에 안 막힘(도끼는 위에서 되돌아옴)
+      for (const o of potsNear) if (!o.gone && Math.hypot(o.x - b.x, o.y - 12 - b.y) < (b.r || 4) + 7) smashPot(o);   // 탄 높이(몸 가운데) 기준 · 적 맞히는 식과 같은 꼴
       if (b.aoe && b.life <= 0 && !b.done) {
         b.done = true; blastAt(b.x, b.y + 10, b.aoe, b.dmg, b.kind, b.c); sfx('hit');
         if (b.kind === 'atk' && G.uniq.has('chainbolt')) {                   // 연쇄 번개(전설): 터진 자리 가까운 적 둘
@@ -1913,10 +1945,13 @@ const HNS = (() => {
     }
     G.drops = G.drops.filter(d => !d.got);
     G.buff.fury = Math.max(0, G.buff.fury - dt); G.buff.swift = Math.max(0, G.buff.swift - dt);
-    {                                                 // 제단 밟기
+    {                                                 // 제단 밟기 · 항아리는 몸으로 부딪혀도 깨짐(멀리 쏘는 직업도 걸어가 깰 수 있게)
       const cx = Math.floor(p.x / CHUNK), cy = Math.floor(p.y / CHUNK);
       for (let gx = cx - 1; gx <= cx + 1; gx++) for (let gy = cy - 1; gy <= cy + 1; gy++)
-        for (const o of chunkInfo(gx, gy).solid) if (o.kind === 'shrine' && !o.used && Math.hypot(o.x - p.x, (o.y - p.y) / SQ) < 12) useShrine(o);
+        for (const o of chunkInfo(gx, gy).solid) {
+          if (o.kind === 'shrine' && !o.used && Math.hypot(o.x - p.x, (o.y - p.y) / SQ) < 12) useShrine(o);
+          else if (o.kind === 'pot' && !o.gone && Math.hypot(o.x - p.x, (o.y - p.y) / SQ) < 11) smashPot(o);
+        }
     }
     for (const gh of G.ghosts) gh.t += dt;
     G.ghosts = G.ghosts.filter(gh => gh.t < 0.3);
@@ -1998,6 +2033,22 @@ const HNS = (() => {
     ctx.globalAlpha = 1;
   }
   function shadow(x, y, rx, a) { ctx.fillStyle = `rgba(0,0,0,${a})`; ctx.beginPath(); ctx.ellipse(x, y, rx, rx * 0.35, 0, 0, 7); ctx.fill(); }
+  // 항아리: 글자 그림(D.POT_ART) → 던전 색으로 한 번 칠해 둔 캔버스 · 맨 아래 줄이 발
+  const POT_CH = '.oDdmlhkbB', potCanvas = {};
+  function potImg(v) {
+    const key = G.dun.key + v;
+    if (potCanvas[key]) return potCanvas[key];
+    const rows = D.POT_ART.shapes[v], pal = D.POT_ART.pals[G.dun.key] || D.POT_ART.pals.crypt;
+    const c = document.createElement('canvas'); c.width = rows[0].length; c.height = rows.length;
+    const g = c.getContext('2d');
+    rows.forEach((row, y) => { for (let x = 0; x < row.length; x++) { const i = POT_CH.indexOf(row[x]); if (i > 0) { g.fillStyle = pal[i - 1]; g.fillRect(x, y, 1, 1); } } });
+    return (potCanvas[key] = c);
+  }
+  function drawPot(o) {
+    const im = potImg(o.v);
+    shadow(o.x, o.y, im.width * 0.38, 0.3);
+    ctx.drawImage(im, Math.round(o.x - im.width / 2), Math.round(o.y - im.height + 1));
+  }
   function enemyCol(e) {
     const sh = e.sh, acts = sh.acts || {};
     // 예고(wind) = 시간에 맞춰 천천히 들어 올림 · 공격(act) = 빠르게 한 번 · 쉼(rec) = 거두기
@@ -2183,6 +2234,14 @@ const HNS = (() => {
       } else if (f.k === 'lvup') {
         ctx.globalAlpha = 0.6 * (1 - k); ctx.strokeStyle = '#ffe08a'; ctx.lineWidth = 2;
         ctx.beginPath(); ctx.ellipse(f.x, f.y - 1, 10 + 20 * k, 4 + 8 * k, 0, 0, 7); ctx.stroke(); ctx.globalAlpha = 1;
+      } else if (f.k === 'shards') {                  // 깨진 항아리 조각: 바닥에 잠깐 남았다가 끝 30% 동안 사라짐
+        ctx.globalAlpha = k < 0.7 ? 1 : (1 - k) / 0.3;
+        for (let i = 0; i < 6; i++) {
+          const a = f.seed + i * 2.1, d = 3 + (i * 5 + f.seed) % 7;
+          ctx.fillStyle = f.c[i % f.c.length];
+          ctx.fillRect(Math.round(f.x + Math.cos(a) * d), Math.round(f.y - 1 + Math.sin(a) * d * 0.45), i % 3 ? 2 : 3, i % 2 ? 1 : 2);
+        }
+        ctx.globalAlpha = 1;
       } else if (f.k === 'dust') {
         ctx.globalAlpha = 0.45 * (1 - k); ctx.fillStyle = '#b8aec8';
         for (let i = -1; i <= 1; i += 2) { ctx.beginPath(); ctx.ellipse(f.x + i * (4 + 8 * k), f.y - 1, 3 + 2 * k, 1.5 + k, 0, 0, 7); ctx.fill(); }
@@ -2299,7 +2358,8 @@ const HNS = (() => {
         const o = A.props[e.name];
         if (e.r) shadow(e.x, e.y, o.cell[0] * 0.4, 0.28);
         drawPiece(o, e.x, e.y);
-      } else if (e.kind === 'shrine') drawShrine(e);
+      } else if (e.kind === 'pot') drawPot(e);
+      else if (e.kind === 'shrine') drawShrine(e);
       else {
         const big = e.boss || e.elite;
         shadow(e.x, e.y - 1, (e.r + 1), e.z ? 0.18 : 0.25);
@@ -2730,7 +2790,7 @@ const HNS = (() => {
     for (const k in A.mons) img(A.mons[k].file);
     for (const k in A.heroes) img(A.heroes[k].file);
     for (const k in A.tiles) img(A.tiles[k].file);
-    img(A.pillar.file); img(A.items.potion.file); img(Object.values(A.props)[0].file);
+    img(A.items.potion.file); img(Object.values(A.props)[0].file);
     resize();
     window.addEventListener('resize', resize);
     // 조작: 터치 = 화면 왼쪽 55% 에서 누른 자리가 조이스틱 중심(오른쪽은 버튼 손) · 마우스 = 누른 곳으로
@@ -2848,6 +2908,12 @@ const HNS = (() => {
       bossAt(key, dx, dy, final) { const e = spawnBoss(key, !!final); e.x = G.p.x + dx; e.y = G.p.y + dy; e.boss.busy = 99; return e; },
       move(name) { if (G.boss) { G.boss.boss.busy = 99; return BOSS_MOVES[name](G.boss, 1); } },
       frame() { render(); },
+      pots(rad) {                                     // 주인공 둘레 rad 안의 성한 항아리(시험용)
+        const out = [], p = G.p, R = rad || 300, n = Math.ceil(R / CHUNK), cx = Math.floor(p.x / CHUNK), cy = Math.floor(p.y / CHUNK);
+        for (let gx = cx - n; gx <= cx + n; gx++) for (let gy = cy - n; gy <= cy + n; gy++)
+          for (const o of chunkInfo(gx, gy).solid) if (o.kind === 'pot' && !o.gone && Math.hypot(o.x - p.x, o.y - p.y) < R) out.push(o);
+        return out;
+      },
       bench(n) { const t0 = performance.now(); for (let i = 0; i < n; i++) render(); return (performance.now() - t0) / n; },
     },
   };

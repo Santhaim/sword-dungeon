@@ -267,6 +267,37 @@ const DATA = (() => {
   D.xpNeed = lv => 10 + lv * 8 + lv * lv;
   D.GOLD_DROP = 0.025; D.HEAL_DROP = 0.008; D.HEAL_PCT = 0.25; D.PICKUP = 40;
   D.MAGNET_BOSS = 0.6;                                 // 보스(마지막 빼고)를 잡으면 이 확률로 자석(바닥 보석·금화를 다 끌어옴)
+  // 항아리(10-23 사용자 «경험치 먹느라 주변만 왔다갔다 → 벽 대신 항아리를 많이 · 깨면 회복약·자석»)
+  //   256px 덩어리마다: group 확률로 무리(groupN 개) + single 확률로 홀로 하나 · 닿거나 때리면 깨짐 · 깨진 건 판 끝까지 안 돌아옴
+  //   깰 때 하나만: 숨은 상자 chest → 자석 magnet → 회복약 heal → 금화 gold(1~2닢) → 나머지는 빈 항아리
+  D.POT = { group: 0.55, groupN: [2, 4], single: 0.45, chest: 0.005, magnet: 0.03, heal: 0.08, gold: 0.2 };
+  // 항아리 그림(10-23 이 게임을 위해 새로 그림 · 만든 도구 = work\tools\hns_pots.py: 회전체 옆선 + 왼쪽 위 빛)
+  //   글자: . 빈칸 · o 윤곽 · D d m l h = 깊은 그늘 → 반짝 · k 입구 구멍 · b B 띠(그늘·빛) / 맨 아래 줄 = 발
+  //   모양 = 둥근 단지 · 키 큰 항아리(손잡이) · 작은 단지(끈) / 색 = 던전마다(묘지 뼈색 · 굴 황토 · 요새 녹색 유약 · 골짜기 테라코타)
+  D.POT_ART = {
+    shapes: [
+      [   // round
+        '.....oooooo.....', '....ollllllo....', '...olkkkkkkmo...', '...oodlllmDoo...', '..oBlllllllmbo..', '..olBBBBBBBbdo..',
+        '.olllhllllmmmdo.', 'ollllhlmmmmdddDo', 'omlllllmmmmddDDo', 'omlllllmmmmddDDo', '.obbmmdddddDbbo.', '..ombbbbbbbbDo..',
+        '..ommmmmmdddDo..', '...oodddDDDoo...', '.....oooooo.....',
+      ],
+      [   // tall
+        '......oooo......', '.....ollllo.....', '....olkkkkmo....', '....oomllDoo....', '...ollllmdmdo...', '..ol.ollmdo.do..',
+        '..om.lhlllm.do..', '..olllhllmmdDo..', '..oblllllmmmbo..', '..obBbbBbbbbbo..', '..olbBbbbbbbDo..', '..omlmmmmmddDo..',
+        '..ollllmmmddDo..', '..odddddddDDDo..', '...ommmmddDDo...', '....ommmddDo....', '.....ommddo.....', '......oooo......',
+      ],
+      [   // small
+        '....oooo....', '...ollllo...', '..olkkkkmo..', '..ooBBBboo..', '.ollhlllmmo.', 'olllhlmbmdDo',
+        'ollllmmBbdDo', 'ollllmmmddDo', '.oddddddDDo.', '..oodddDoo..', '....oooo....',
+      ],
+    ],
+    pals: {   // 윤곽 · 깊은 그늘 · 그늘 · 바탕 · 빛 · 반짝 · 구멍 · 띠 그늘 · 띠 빛
+      crypt: ['#2a1a2a', '#5e4660', '#8e7888', '#c8b8a6', '#ece0c6', '#fffaea', '#170e18', '#34203a', '#563a5c'],
+      den: ['#2a1816', '#6c3a2a', '#a05c34', '#cc8a4c', '#eab474', '#fff0c4', '#1a0e0e', '#3a1e12', '#6e4424'],
+      fort: ['#141a20', '#1e4a3c', '#2e7c4c', '#4caa4c', '#8edc5c', '#eaffb4', '#0c1410', '#6a4a1a', '#cc9c3c'],
+      valley: ['#2a1418', '#6c2c2c', '#a4442e', '#d26c3c', '#f29c5c', '#ffe2a4', '#1a0a0a', '#b4a68e', '#f2eada'],
+    },
+  };
   D.ITEM_DROP = { mob: 0.0008, elite: 0.25 };
 
   // ── 장비 — 칸 4 · 등급 4 · 붙는 성질 무작위
@@ -370,7 +401,7 @@ const DATA = (() => {
     { id: 'wolf300', name: '늑대 사냥꾼', desc: '늑대 300마리', need: P => [K(P, 'wolf'), 300], gift: { gold: 250 } },
     { id: 'den', name: '짐승 굴 정복', desc: '우두머리 늑대를 쓰러뜨린다', need: P => [P.stats.bosses.alpha_wolf || 0, 1], gift: { dungeon: 'fort', cls: 'gunner' } },
     { id: 'goblin', name: '보물 고블린', desc: '도망치는 보물 고블린을 잡는다', need: P => [P.stats.goblins, 1], gift: { gold: 300 } },
-    { id: 'secret', name: '숨은 방', desc: '금 간 기둥 속 비밀 상자를 연다', need: P => [P.stats.secrets, 1], gift: { gold: 200 } },
+    { id: 'secret', name: '숨은 방', desc: '항아리 속 숨은 상자를 연다', need: P => [P.stats.secrets, 1], gift: { gold: 200 } },
     { id: 'shrine', name: '순례자', desc: '던전의 제단을 10번 밟는다', need: P => [P.stats.shrines || 0, 10], gift: { gold: 250 } },
     { id: 'fort', name: '고블린 요새 정복', desc: '오크 대장을 쓰러뜨린다', need: P => [P.stats.bosses.orc_warlord || 0, 1], gift: { dungeon: 'valley', cls: 'mage' } },
     { id: 'ult30', name: '쓸어버리기', desc: '필살기 한 번에 30마리', need: P => [P.stats.ultKills, 30], gift: { gold: 400 } },

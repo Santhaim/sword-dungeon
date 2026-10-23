@@ -4,7 +4,7 @@
 const SFX = (() => {
   let ac = null, master = null, noiseBuf = null, on = true;
   const last = {};
-  const GAP = { hit: 0.035, kill: 0.045, gem: 0.03, coin: 0.05, swing: 0.05, shot: 0.05, gun: 0.045, ehit: 0.06, zap: 0.06, warn: 0.12, frost: 0.1 };
+  const GAP = { hit: 0.035, kill: 0.045, gem: 0.03, coin: 0.05, swing: 0.05, shot: 0.05, gun: 0.045, ehit: 0.06, zap: 0.06, warn: 0.12, frost: 0.1, pot: 0.05 };
   function ctx() {
     if (!ac) {
       const C = window.AudioContext || window.webkitAudioContext;
@@ -72,6 +72,12 @@ const SFX = (() => {
     reload: () => { tone({ type: 'square', f0: 900, dur: 0.03, vol: 0.05 }); tone({ type: 'square', f0: 600, dur: 0.04, vol: 0.05, delay: 0.12 }); },
     eshot: () => tone({ type: 'square', f0: 700, f1: 350, dur: 0.1, vol: 0.04 }),
     ehit: () => tone({ type: 'square', f0: 180, f1: 120, dur: 0.05, vol: 0.05 }),
+    pot: () => {                                      // 항아리 깨짐(10-23): 짧은 쨍 + 높은 조각 소리 둘 + 낮은 퍽
+      hiss({ dur: 0.12, vol: 0.11, f0: 4200, f1: 1600, q: 1.1 });
+      tone({ type: 'triangle', f0: 1900, f1: 1500, dur: 0.06, vol: 0.05 });
+      tone({ type: 'triangle', f0: 2600, f1: 2200, dur: 0.05, vol: 0.035, delay: 0.045 });
+      tone({ type: 'sine', f0: 180, f1: 90, dur: 0.08, vol: 0.08 });
+    },
     zap: () => { hiss({ dur: 0.16, vol: 0.12, f0: 7000, f1: 2000, q: 0.5 }); tone({ type: 'square', f0: 1800, f1: 300, dur: 0.12, vol: 0.05 }); },
     frost: () => hiss({ dur: 0.3, vol: 0.08, f0: 6000, f1: 9000, q: 3 }),
     fire: () => { hiss({ dur: 0.35, vol: 0.12, f0: 300, f1: 1800, q: 0.6 }); tone({ type: 'sawtooth', f0: 90, f1: 160, dur: 0.25, vol: 0.05 }); },
