@@ -36,12 +36,18 @@ const HNS = (() => {
   const sfx = n => { if (!simming && window.SFX) SFX.play(n); };
 
   // ── 화면: 짧은 쪽에 원본 약 300px · 정수 배율 · 세상은 작은 판(low)에 1:1 로 그리고 화면엔 한 번에 S배(최적화)
+  //   10-25 사용자 «뒤로가기 버튼 보이게 밀면 화면이 줄어듦» — 전체 화면에서 시스템 막대가 잠깐 나오면 보이는 칸이 줄어 배율이 한 단계 떨어졌음
+  //   → 폰 앱·전체 화면일 땐 배율을 «화면 전체»의 짧은 쪽으로 정함(막대가 나와도 크기는 그대로 · 막대 몫만 가려짐)
+  const fullView = () => !!document.fullscreenElement ||
+    (matchMedia('(pointer: coarse)').matches && matchMedia('(display-mode: fullscreen), (display-mode: standalone)').matches);
   function resize() {
     dpr = window.devicePixelRatio || 1;
     const r = cv.parentElement.getBoundingClientRect();
     cv.style.width = r.width + 'px'; cv.style.height = r.height + 'px';
     cv.width = Math.round(r.width * dpr); cv.height = Math.round(r.height * dpr);
-    S = Math.max(1, Math.round(Math.min(cv.width, cv.height) / 300) + zoomAdj);
+    let short = Math.min(cv.width, cv.height);
+    if (fullView()) short = Math.max(short, Math.min(screen.width, screen.height) * dpr);
+    S = Math.max(1, Math.round(short / 300) + zoomAdj);
     VW = cv.width / S; VH = cv.height / S;
   }
 
@@ -2793,6 +2799,7 @@ const HNS = (() => {
     img(A.items.potion.file); img(Object.values(A.props)[0].file);
     resize();
     window.addEventListener('resize', resize);
+    if (window.ResizeObserver) new ResizeObserver(() => resize()).observe(cv.parentElement);   // 창 크기 알림 없이 무대만 바뀌어도(시스템 막대가 들고 날 때 등) 다시 맞춤
     // 조작: 터치 = 화면 왼쪽 55% 에서 누른 자리가 조이스틱 중심(오른쪽은 버튼 손) · 마우스 = 누른 곳으로
     cv.addEventListener('pointerdown', e => {
       e.preventDefault();
@@ -2886,7 +2893,7 @@ const HNS = (() => {
     giveUp() { if (G && !G.over && !G.done) { G.over = true; G.gaveUp = true; } },
     get G() { return G; },
     setCtrl(v) { ctrl = v; joy = null; dest = null; }, get ctrl() { return ctrl; },
-    setZoom(z) { zoomAdj = Math.max(0, z | 0); resize(); }, get zoomAdj() { return zoomAdj; },
+    setZoom(z) { zoomAdj = Math.max(0, z | 0); resize(); }, get zoomAdj() { return zoomAdj; }, get scale() { return S; },
     pause(v) { if (G) G.paused = v; },
     drawIcon(c2, icon, x, y, col) { const o = ctx; ctx = c2; drawIcon(icon, x, y, col); ctx = o; },
     test: {
