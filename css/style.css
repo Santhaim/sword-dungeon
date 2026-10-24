@@ -152,6 +152,10 @@ details > .row, details > .items { margin-top: 6px; }
 .it i.cmp.eq { color: var(--dim); }
 .it li.lost { color: #ff9a9a; }
 .it li.lost small { color: var(--dim); }
+/* 강화 맞춰 견주기(10-24 «동렙일 때 비교» → A «한 줄»): 낀 것만큼 강화하면 좋아지는 장비에만 */
+.it .uph { font-size: 11.5px; color: var(--dim); border-top: 1px dashed var(--line); padding-top: 3px; }
+.it .uph i.cmp { margin-left: 2px; }
+.it .uph small { color: #ffe08a; font-weight: 700; margin-left: 4px; }
 .it .ih b { color: var(--rc); font-size: 14px; }
 .it .ih small { font-size: 11px; color: var(--dim); }
 /* 능력치 표(10-22): 이름 · 전체 값 · (축복·장비·레벨업으로 오른 몫) */

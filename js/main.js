@@ -149,6 +149,15 @@
   const itemName = it => (it.up ? `+${it.up} ` : '') + it.name;
   const statsOf = it => { const s = {}, k = D.affixScale(it.ilvl, it.up); for (const a of it.aff) s[a.k] = (s[a.k] || 0) + a.v * k; return s; };
   const fmtGap = (k, v) => k === 'regen' ? Math.abs(v).toFixed(1) : k === 'lifesteal' ? (Math.abs(v) * 100).toFixed(1) + '%' : Math.round(Math.abs(v) * 100) + '%';
+  // 강화 맞춰 견주기(10-24 사용자 «동렙일 때 비교도» → 시안 셋 중 A «한 줄»): 아이템 레벨은 주운 던전으로 정해져 못 올리니 «지금 낀 것만큼 강화하면»으로 견줌
+  //   지금은 ▼·≈ 인데 낀 것만큼 강화하면 ▲ 가 되는 장비에만 한 줄 + 드는 금화 · 나머지 카드는 그대로
+  const upCost = (it, to) => { let c = 0; for (let u = it.up; u < to; u++) c += D.SMITH.cost(u, it.rar); return c; };
+  function upHint(it, vs) {
+    if (!vs || vs === 'empty' || vs.up <= it.up) return '';
+    const base = HNS.itemScore(vs), now = HNS.itemScore(it) - base, up = HNS.itemScore(Object.assign({}, it, { up: vs.up })) - base;
+    if (now >= 0.3 || up < 0.3) return '';
+    return `<div class="uph">🔨 +${vs.up}까지 강화하면 <i class="cmp up">▲ 좋아짐</i> <small>${upCost(it, vs.up)}💰</small></div>`;
+  }
   // 성질 줄 · vs = 비교할 «지금 낀 것»(10-22 사용자 «착용템이랑 인벤토리 템 수치 비교해서 +−») — 줄마다 ▲초록 / ▼빨강 · 낀 것에만 있던 성질은 «빠짐» 줄
   //   (받는 피해·재사용 대기도 값이 클수록 좋음 → 모든 성질이 ▲ = 좋아짐)
   function affLines(it, vs) {
@@ -180,7 +189,7 @@
   function itemHtml(it, attrs, extra, vs) {           // vs = 견줄 «지금 낀 것»(빈 칸이면 'empty' · 안 견주면 없음)
     const R = D.ITEM_RARITY[it.rar];
     return `<div class="it r${it.rar}" ${attrs || ''} style="--rc:${R.color}"><div class="ih"><span class="ii">${itemIcon(it)}</span><b>${esc(itemName(it))}${it.isNew ? ' <i class="new">새</i>' : ''}</b>
-      <small>${R.name} · ${D.SLOTS[it.slot]} · Lv${it.ilvl}${cmpBadge(it, vs)}</small></div><ul>${affLines(it, vs)}</ul>${extra || ''}</div>`;
+      <small>${R.name} · ${D.SLOTS[it.slot]} · Lv${it.ilvl}${cmpBadge(it, vs)}</small></div><ul>${affLines(it, vs)}</ul>${upHint(it, vs)}${extra || ''}</div>`;
   }
   const scrapOf = it => Math.round(D.ITEM_RARITY[it.rar].scrap * (1 + it.up * 0.3));
   const STAT_NAME = { dmg: '공격력', hp: '체력', speed: '이동 속도', atkspd: '공격 속도', crit: '치명타', critdmg: '치명 피해', cdr: '재사용 대기', lifesteal: '흡혈',
