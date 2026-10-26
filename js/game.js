@@ -1427,7 +1427,7 @@ const HNS = (() => {
       e.lock = 2.2 * w;
       return 2.6 * w;
     },
-    howl(e, w) {                                      // 울부짖음: 늑대 부르고 빨라짐
+    howl(e, w) {                                      // 포효: 부하(백호 = 호랑이) 부르고 빨라짐
       G.fx.push({ k: 'ring', x: e.x, y: e.y - 8, r: 90, t: 0, dur: 0.6, c: '#ff8a5a' });
       sfx('boss'); G.shake = 0.3;
       e.boss.buff = 5;

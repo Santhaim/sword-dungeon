@@ -193,7 +193,7 @@ const DATA = (() => {
 
   // ── 몬스터(사용자: 원거리 공격 · 던전마다 공격 동작 · 굼뜨게)
   //   atk: 'hop'(젤리 · 움츠렸다 튀어 오름) · 'dive'(박쥐 · 급강하) · 'melee'(멈춰 들어 올렸다 내려침 · 앞쪽 부채꼴)
-  //        'shoot'(거리 두고 겨눴다 쏨) · 'lunge'(늑대 · 웅크렸다 덮침) · 'charge'(멧돼지 · 선 예고 뒤 돌진) · 'slam'(오우거 · 바닥 원 예고)
+  //        'shoot'(거리 두고 겨눴다 쏨) · 'lunge'(호랑이 · 웅크렸다 덮침) · 'charge'(곰 · 선 예고 뒤 돌진) · 'slam'(오우거 · 바닥 원 예고)
   //   windup = 예고 시간(굼뜨게) · rec = 쉬는 시간 · art = 그림 묶음 이름(없으면 그 몬스터는 안 나옴)
   D.MONSTERS = {
     slime: { name: '젤리', art: ['slime_0', 'slime_1', 'slime_2', 'slime_3', 'slime_4'], hp: 16, dmg: 5, speed: 30, xp: 1,
@@ -203,8 +203,9 @@ const DATA = (() => {
     skeleton: { name: '해골 병사', art: ['skeleton'], hp: 30, dmg: 9, speed: 32, xp: 2, atk: 'melee', range: 24, arc: 100, windup: 0.36, rec: 0.5 },
     skel_archer: { name: '해골 궁수', art: ['skel_archer'], hp: 22, dmg: 7, speed: 28, xp: 2, atk: 'shoot', range: 150, keep: 95, windup: 0.8, rec: 1.2,
                    proj: 'arrow', pspd: 120 },
-    wolf: { name: '늑대', art: ['wolf'], hp: 24, dmg: 7, speed: 50, xp: 2, atk: 'lunge', range: 46, windup: 0.75, rec: 0.9, leap: 60 },
-    boar: { name: '멧돼지', art: ['boar'], hp: 48, dmg: 12, speed: 34, xp: 3, atk: 'charge', range: 120, windup: 0.8, rec: 1.2, leap: 150 },
+    // 10-26 사용자 «늑대·멧돼지 말고 곰·호랑이»(시안 B) — 열쇠 wolf·boar 는 그대로(처치 수·도전 과제 기록이 이어지게) · 이름·그림만 바꿈
+    wolf: { name: '호랑이', art: ['tiger'], hp: 24, dmg: 7, speed: 50, xp: 2, atk: 'lunge', range: 46, windup: 0.75, rec: 0.9, leap: 60 },
+    boar: { name: '반달가슴곰', art: ['moon_bear'], hp: 48, dmg: 12, speed: 34, xp: 3, atk: 'charge', range: 120, windup: 0.8, rec: 1.2, leap: 150 },
     goblin: { name: '고블린', art: ['goblin'], hp: 24, dmg: 6, speed: 38, xp: 2, atk: 'melee', range: 22, arc: 100, windup: 0.36, rec: 0.55 },
     shaman: { name: '고블린 주술사', art: ['shaman'], hp: 24, dmg: 10, speed: 28, xp: 3, atk: 'shoot', range: 150, keep: 100, windup: 0.9, rec: 1.4,
               proj: 'orb', pspd: 90 },
@@ -231,9 +232,10 @@ const DATA = (() => {
                     moves: ['jump', 'spit', 'jump', 'spit'], split: true, kids: 'slime_3' },
     skeleton_king: { name: '해골 왕', art: 'skeleton_king', hp: 3100, dmg: 20, speed: 26, r: 14, gold: [100, 150],
                      moves: ['sweep', 'spikes', 'summon', 'sweep'], rage: ['whirl', 'spikes'] },
-    boar_king: { name: '멧돼지 왕', art: 'boar_king', hp: 1650, dmg: 18, speed: 28, r: 16, gold: [50, 70],
+    // 10-26 짐승 굴 보스(곰·호랑이 시안 B): 열쇠 boar_king·alpha_wolf 는 그대로(보스 처치 기록·«짐승 굴 정복» 과제가 이어지게) · 곰 왕 = 큰 불곰 + 금관 · 백호 = 흰 몸·먹빛 줄무늬
+    boar_king: { name: '곰 왕', art: 'bear_king', hp: 1650, dmg: 18, speed: 28, r: 16, gold: [50, 70],
                  moves: ['charge', 'charge', 'stomp'] },
-    alpha_wolf: { name: '우두머리 늑대', art: 'alpha_wolf', hp: 3600, dmg: 22, speed: 40, r: 14, gold: [110, 160],
+    alpha_wolf: { name: '백호', art: 'white_tiger', hp: 3600, dmg: 22, speed: 40, r: 14, gold: [110, 160],
                   moves: ['dashes', 'howl', 'claw', 'dashes'], rage: ['dashes', 'claw'] },
     shaman_elder: { name: '주술사 장로', art: 'shaman_elder', hp: 1950, dmg: 18, speed: 24, r: 12, gold: [55, 75],
                     moves: ['orbs', 'summon', 'orbs'] },
@@ -414,8 +416,8 @@ const DATA = (() => {
     { id: 'crypt', name: '지하 묘지 정복', desc: '해골 왕을 쓰러뜨린다', need: P => [P.stats.bosses.skeleton_king || 0, 1], gift: { dungeon: 'den', cls: 'archer' } },
     { id: 'evo', name: '진화', desc: '능력을 진화시킨다', need: P => [P.stats.evos, 1], gift: { gold: 300 } },
     { id: 'legend', name: '전설', desc: '전설 카드를 고른다', need: P => [P.stats.legends, 1], gift: { gold: 150 } },
-    { id: 'wolf300', name: '늑대 사냥꾼', desc: '늑대 300마리', need: P => [K(P, 'wolf'), 300], gift: { gold: 250 } },
-    { id: 'den', name: '짐승 굴 정복', desc: '우두머리 늑대를 쓰러뜨린다', need: P => [P.stats.bosses.alpha_wolf || 0, 1], gift: { dungeon: 'fort', cls: 'gunner' } },
+    { id: 'wolf300', name: '호랑이 사냥꾼', desc: '호랑이 300마리', need: P => [K(P, 'wolf'), 300], gift: { gold: 250 } },
+    { id: 'den', name: '짐승 굴 정복', desc: '백호를 쓰러뜨린다', need: P => [P.stats.bosses.alpha_wolf || 0, 1], gift: { dungeon: 'fort', cls: 'gunner' } },
     { id: 'goblin', name: '보물 고블린', desc: '도망치는 보물 고블린을 잡는다', need: P => [P.stats.goblins, 1], gift: { gold: 300 } },
     { id: 'secret', name: '숨은 방', desc: '항아리 속 숨은 상자를 연다', need: P => [P.stats.secrets, 1], gift: { gold: 200 } },
     { id: 'shrine', name: '순례자', desc: '던전의 제단을 10번 밟는다', need: P => [P.stats.shrines || 0, 10], gift: { gold: 250 } },
