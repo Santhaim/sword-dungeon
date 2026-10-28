@@ -246,15 +246,17 @@ const DATA = (() => {
                   moves: ['leap', 'boulders', 'quake', 'leap'], rage: ['leap', 'quake'] },
   };
   // 던전(해머워치·홀즈처럼 테마마다 몬스터·보스) — mobs: [몬스터, 나오기 시작(초), 무게] · tier = 강함
+  // 10-28 사용자 «골드 획득량 대비 업그레이드 비용이 큰 것 같다» → 계산(봇 정복 판 금화 묘지 1,106 · 굴 922 · 요새 1,199 · 골짜기 1,153 — 던전이 어려워도 거의 같았음) → 시안 A
+  //   gold = 그 던전 금화 배율(판 안 동전·카드 금화 모두) · clearGold = 정복 보너스(판 끝에 한 번 · 재물운 안 붙음) · 축복·대장간 값은 그대로
   D.DUNGEONS = [
-    { key: 'crypt', name: '지하 묘지', tiles: 'tiles_crypt', tier: 1, mid: 'jelly_blue', boss: 'skeleton_king',
+    { key: 'crypt', name: '지하 묘지', tiles: 'tiles_crypt', tier: 1, gold: 1, clearGold: 200, mid: 'jelly_blue', boss: 'skeleton_king',
       minis: { 180: 'giant_slime', 540: 'jelly_purple' },             // 정예 무리 대신 나오는 보스(3분 초록 · 9분 보라)
       mobs: [['slime', 0, 10], ['bat', 40, 6], ['skeleton', 90, 8], ['skel_archer', 170, 5]] },
-    { key: 'den', name: '짐승 굴', tiles: 'tiles_den', tier: 1.6, mid: 'boar_king', boss: 'alpha_wolf',
+    { key: 'den', name: '짐승 굴', tiles: 'tiles_den', tier: 1.6, gold: 1.5, clearGold: 400, mid: 'boar_king', boss: 'alpha_wolf',
       mobs: [['bat', 0, 6], ['slime', 0, 6], ['wolf', 40, 7], ['boar', 120, 5], ['skel_archer', 240, 3]] },
-    { key: 'fort', name: '고블린 요새', tiles: 'tiles_fort', tier: 2.0, mid: 'shaman_elder', boss: 'orc_warlord',
+    { key: 'fort', name: '고블린 요새', tiles: 'tiles_fort', tier: 2.0, gold: 2, clearGold: 600, mid: 'shaman_elder', boss: 'orc_warlord',
       mobs: [['goblin', 0, 10], ['wolf', 30, 4], ['shaman', 80, 5], ['orc', 150, 6]] },
-    { key: 'valley', name: '거인 골짜기', tiles: 'tiles_valley', tier: 2.7, mid: 'golem', boss: 'ogre_chief',
+    { key: 'valley', name: '거인 골짜기', tiles: 'tiles_valley', tier: 2.7, gold: 2.5, clearGold: 800, mid: 'golem', boss: 'ogre_chief',
       mobs: [['goblin', 0, 8], ['boar', 30, 5], ['orc', 90, 7], ['ogre', 240, 4], ['shaman', 200, 3]] },
   ];
   // 한 판 = 12분(폰에 맞게) — 3·9분 정예 무리 · 6분 중간 보스 · 12분 마지막 보스

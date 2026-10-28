@@ -262,7 +262,7 @@
     const duns = D.DUNGEONS.map((d, i) => {
       const ok = pf.unlocked.dungeons.includes(d.key), cl = pf.stats.clears[d.key] || 0;
       const stars = '★'.repeat(i + 1);
-      return `<button data-d="${d.key}" class="dun ${pf.dungeon === d.key ? 'on' : ''}" ${ok ? '' : 'disabled'}><b>${d.name}</b><small>${ok ? stars + (cl ? ` · 정복 ${cl}` : '') : '잠김'}</small></button>`;
+      return `<button data-d="${d.key}" class="dun ${pf.dungeon === d.key ? 'on' : ''}" ${ok ? '' : 'disabled'}><b>${d.name}</b><small>${ok ? stars + (d.gold > 1 ? ` · 💰×${d.gold}` : '') + (cl ? ` · 정복 ${cl}` : '') : '잠김'}</small></button>`;
     }).join('');
     const S = D.SKILLS, U = D.ULTS[C.ult];
     // 다음 목표(홀즈처럼 늘 하나): 아직 못 한 도전 과제 중 진행이 가장 많이 된 것
@@ -580,7 +580,7 @@
   }
   function resultHtml(res) {
     const ach = res.ach.map(a => `<div class="lt" style="color:#ffcf5a">🏆 ${esc(a.name)} 달성!</div>`).join('');
-    return `<div class="stat">금화 +${res.gold}${res.scrap ? ` · 창고가 넘쳐 ${res.scrapped}개 분해 +${res.scrap}` : ''} → 💰 ${P().gold}</div>${ach}`;
+    return `<div class="stat">금화 +${res.gold}${res.bonus ? ` (정복 보너스 +${res.bonus} 포함)` : ''}${res.scrap ? ` · 창고가 넘쳐 ${res.scrapped}개 분해 +${res.scrap}` : ''} → 💰 ${P().gold}</div>${ach}`;
   }
   // 주운 장비(10-22 «한 판에 하나만 들고 나오니 답답» → 전부 창고로): 좋은 등급부터 몇 개만 보여 주고 나머지는 «외 N개»
   function keptHtml(G) {

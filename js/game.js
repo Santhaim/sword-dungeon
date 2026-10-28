@@ -1137,7 +1137,7 @@ const HNS = (() => {
       if (c.type === 'pass') { const PS = D.PASSIVES[c.key]; c.val = PS.int ? (c.rar >= 2 ? 2 : 1) : PS.v * R.mul; c.desc = PS.fmt(c.val); }
       else if (c.rar > 0) c.extra = `등급 보너스: 피해 +${Math.round([0, 10, 25, 50][c.rar])}%`;
     }
-    if (!res.length) res.push({ type: 'heal', name: '회복', desc: '체력 40% 회복', rar: 0 }, { type: 'gold', name: '금화', desc: '금화 +30', rar: 0 });
+    if (!res.length) res.push({ type: 'heal', name: '회복', desc: '체력 40% 회복', rar: 0 }, { type: 'gold', name: '금화', amt: 30, desc: '금화 +' + Math.round(30 * (G.dun.gold || 1)), rar: 0 });
     return res;
   }
   function applyCard(c) {
@@ -1156,7 +1156,7 @@ const HNS = (() => {
       hooks.toast && hooks.toast(`진화! ${D.EVOS[c.key].name}`);
       sfx('legend');
     } else if (c.type === 'heal') heal(G.p.maxHp * 0.4);
-    else if (c.type === 'gold') addGold(30);
+    else if (c.type === 'gold') addGold(c.amt || 30);
     void R;
   }
   function pickCard(c) {
@@ -1185,7 +1185,7 @@ const HNS = (() => {
       if (c.type === 'pass') { const PS = D.PASSIVES[c.key]; c.val = PS.v * D.RARITY[c.rar].mul; c.desc = PS.fmt(c.val); }
       res.push(c);
     }
-    while (res.length < n) res.push({ type: 'gold', name: '금화', desc: '금화 +25', rar: 0 });
+    while (res.length < n) res.push({ type: 'gold', name: '금화', amt: 25, desc: '금화 +' + Math.round(25 * (G.dun.gold || 1)), rar: 0 });
     return res;
   }
   let panelQ = [];
@@ -1201,7 +1201,8 @@ const HNS = (() => {
     else if (q.k === 'chest') { const r = chestRewards(q.n); for (const c of r) applyCard(c); G.run.chests++; hooks.chest && hooks.chest(G, r); }
   }
   function queuePanel(q) { panelQ.push(q); if (!G.paused) nextPanel(); }
-  function addGold(v) { G.gold += Math.round(v * (1 + G.st.gold)); sfx('coin'); }
+  // 금화(10-28): 던전 배율(D.DUNGEONS gold) × 재물운 · 소수 몫은 모아 둠 — 예전엔 동전마다 반올림해 1~4닢 동전엔 재물운 8~16%가 통째로 사라졌음
+  function addGold(v) { G.goldF = (G.goldF || 0) + v * (G.dun.gold || 1) * (1 + G.st.gold); G.gold = Math.floor(G.goldF + 1e-6); sfx('coin'); }
   function gainXp(v) {
     G.xp += v * (1 + G.st.xp);
     while (G.xp >= D.xpNeed(G.lv)) {
@@ -2844,7 +2845,8 @@ const HNS = (() => {
     if (!G || G.done) return null;
     G.done = true;
     const P = SAVE.P, cleared = G.cleared;
-    const gold = cleared ? G.gold : Math.floor(G.gold * 0.5);
+    const bonus = cleared ? (G.dun.clearGold || 0) : 0;            // 정복 보너스(10-28 금화 시안 A)
+    const gold = (cleared ? G.gold : Math.floor(G.gold * 0.5)) + bonus;
     for (const s of P.stash) delete s.isNew;
     for (const it of G.bag) { it.cls = it.slot === 'weapon' ? G.cls : null; it.isNew = true; P.stash.push(it); }
     const eq = P.equip[G.cls] = {};
@@ -2869,7 +2871,7 @@ const HNS = (() => {
     if (cleared) P.stats.clears[G.dun.key] = (P.stats.clears[G.dun.key] || 0) + 1;
     const done = checkAch();
     SAVE.save();
-    return { gold, scrap, scrapped, kept: G.bag.length, ach: done };
+    return { gold, bonus, scrap, scrapped, kept: G.bag.length, ach: done };
   }
   function checkAch() {                               // 끝낸 도전 과제 → 보상(금화·해금)
     const P = SAVE.P, done = [];
