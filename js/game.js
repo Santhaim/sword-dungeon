@@ -780,6 +780,37 @@ const HNS = (() => {
     return best;
   }
   function ultCdOf() { return D.ULTS[G.C.ult].cd * (G.skLv.ult >= 4 ? 0.8 : 1) * cdMul() / (1 + G.st.ultc); }
+  // ── 화살비 모습(10-31 사용자 «궁수 필살기 이펙트가 너무 밋밋» → 시안 A 강철·B 빛·C 유성 중 C «유성 화살비») — 그림만(피해는 useUlt)
+  //   rzone = 바닥 금빛 룬 원 · rsky = 하늘 마법진 · rarrow = 떨어지는 금빛 화살(닿으면 rhit 빛 별 + 튐) · rup = 처음 하늘로 쏘아 올림 · rbig·rflare = 마지막 큰 유성 화살 한 방
+  const RAIN_H = 92;                                   // 화살이 떨어지기 시작하는 높이(바닥에서 화면 위로)
+  function rainUp(p) { G.fx.push({ k: 'rup', x: p.x, y: p.y - 12, t: 0, dur: 0.3 }); }
+  function rainStart(s, r, dur) {
+    G.fx.push({ k: 'rzone', x: s.x, y: s.y, r, t: 0, dur: dur + 0.35 });
+    G.fx.push({ k: 'rsky', x: s.x, y: s.y - RAIN_H, r: r * 0.62, t: 0, dur: dur + 0.25 });
+    shockAt(s.x, s.y, r, '#ffe6a0', 0.45);
+  }
+  function rainTick(s, r) {                            // 한 번(0.12초)에 화살 5개: 하늘 마법진 안에서 나와 범위 안 아무 데나로
+    for (let i = 0; i < 5; i++) {
+      const a = rand(0, Math.PI * 2), rr = r * Math.sqrt(Math.random()), tx = s.x + Math.cos(a) * rr, ty = s.y + Math.sin(a) * rr * SQ;
+      const b = rand(0, Math.PI * 2), q = r * 0.62 * Math.sqrt(Math.random()), sx = s.x + Math.cos(b) * q, sy = s.y - RAIN_H + Math.sin(b) * q * 0.32;
+      const fall = rand(0.16, 0.24);
+      after(rand(0, 0.11), () => { G.fx.push({ k: 'rarrow', x: tx, y: ty, sx, sy, t: 0, dur: fall }); after(fall, () => rainHit(tx, ty)); });
+    }
+  }
+  function rainHit(x, y) {
+    G.fx.push({ k: 'rhit', x, y, t: 0, dur: 0.4, tilt: rand(-0.35, 0.35) });
+    burst(x, y, 4, ['#fff6c0', '#ffd76a', '#ffb04a'], { spd: [20, 60], up: [20, 55], life: [0.2, 0.4] });
+  }
+  function rainFinale(s, r, dmg) {                     // 마지막 큰 유성 화살 한 발 — 범위 안 모두 한 번(틱 하나 몫)
+    G.fx.push({ k: 'rbig', x: s.x, y: s.y, sx: s.x - 10, sy: s.y - RAIN_H - 20, t: 0, dur: 0.3 });
+    after(0.3, () => {
+      near(s.x, s.y, r + 10, e => { if (Math.hypot(e.x - s.x, e.y - s.y) < r + e.r) hurtEnemy(e, dmg, 0, 0, 'ult'); });
+      shockAt(s.x, s.y, r * 1.15, '#fff2b0', 0.55); shockAt(s.x, s.y, r * 0.6, '#ffffff', 0.4);
+      burst(s.x, s.y, 36, ['#ffffff', '#fff2b0', '#ffd76a', '#ffb04a'], { spd: [r * 0.6, r * 1.6], up: [40, 110], life: [0.4, 0.8] });
+      G.fx.push({ k: 'rflare', x: s.x, y: s.y, r, t: 0, dur: 0.5 });
+      flashScreen('#fff6d0', 0.26); G.shake = 0.45; sfx('slam');
+    });
+  }
   function useUlt() {
     const p = G && G.p;
     if (busy() || G.ultCd > 0) return false;
@@ -815,15 +846,15 @@ const HNS = (() => {
       const tg = nearestEnemy(220);
       spots.push(tg ? { x: tg.x, y: tg.y } : { x: p.x + Math.cos(facingAng()) * 60, y: p.y + Math.sin(facingAng()) * 60 });
       if (lv >= 5) { const t2 = G.enemies[Math.floor(Math.random() * G.enemies.length)]; if (t2) spots.push({ x: t2.x, y: t2.y }); }
+      rainUp(p);                                     // 10-31 유성 화살비 그림(위 rain*) — 판정은 아래 그대로 + 끝에 한 방
       playAct(u.act, u.fd, 1, () => {
         for (const s of spots) {
-          G.fx.push({ k: 'rain', x: s.x, y: s.y, r, t: 0, dur: u.dur });
-          shockAt(s.x, s.y, r, '#ffe6a0', 0.45);
+          rainStart(s, r, u.dur);
           for (let tt = 0; tt < u.dur; tt += u.tick) after(tt, () => {
             near(s.x, s.y, r + 10, e => { if (Math.hypot(e.x - s.x, e.y - s.y) < r + e.r && Math.random() < 0.55) hurtEnemy(e, dmgBase() * mul, 0, 0, 'ult'); });
-            const a = rand(0, Math.PI * 2), rr = rand(0, r);   // 꽂히는 자리 흙·불꽃
-            burst(s.x + Math.cos(a) * rr, s.y + Math.sin(a) * rr * SQ, 3, ['#ffe6a0', '#c8a070', '#ffffff'], { spd: [15, 45], up: [15, 35], life: [0.2, 0.35] });
+            rainTick(s, r);
           });
+          after(u.dur, () => rainFinale(s, r, dmgBase() * mul));
         }
         flashScreen('#fff2c8', 0.2);
         G.shake = 0.25; finish();
@@ -2253,9 +2284,18 @@ const HNS = (() => {
         ctx.globalAlpha = 0.45 * (1 - k); ctx.fillStyle = '#b8aec8';
         for (let i = -1; i <= 1; i += 2) { ctx.beginPath(); ctx.ellipse(f.x + i * (4 + 8 * k), f.y - 1, 3 + 2 * k, 1.5 + k, 0, 0, 7); ctx.fill(); }
         ctx.globalAlpha = 1;
-      } else if (f.k === 'rain') {
-        ctx.globalAlpha = 0.18; ctx.fillStyle = '#ffe6a0';
-        ctx.beginPath(); ctx.ellipse(f.x, f.y, f.r, f.r * 0.6, 0, 0, 7); ctx.fill(); ctx.globalAlpha = 1;
+      } else if (f.k === 'rzone') {                   // 화살비 바닥(10-31): 금빛 룬 원(돌며 숨 쉬듯)
+        const fade = Math.min(1, f.t / 0.15) * Math.min(1, (f.dur - f.t) / 0.3), rot = f.t * 1.6, pulse = 0.75 + 0.25 * Math.sin(f.t * 9);
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = 0.1 * fade; ctx.fillStyle = '#ffd76a'; ctx.beginPath(); ctx.ellipse(f.x, f.y, f.r, f.r * SQ, 0, 0, 7); ctx.fill();
+        ctx.globalAlpha = 0.6 * fade * pulse; ctx.strokeStyle = '#ffd76a'; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(f.x, f.y, f.r, f.r * SQ, 0, 0, 7); ctx.stroke();
+        ctx.globalAlpha = 0.45 * fade; ctx.strokeStyle = '#fff2b0'; ctx.lineWidth = 1; ctx.beginPath(); ctx.ellipse(f.x, f.y, f.r * 0.72, f.r * 0.72 * SQ, 0, 0, 7); ctx.stroke();
+        ctx.globalAlpha = 0.7 * fade; ctx.fillStyle = '#fff2b0';
+        for (let i = 0; i < 16; i++) {                // 룬 눈금: 바깥 고리를 따라 돎
+          const an = rot + i * Math.PI / 8, x = f.x + Math.cos(an) * f.r * 0.86, y = f.y + Math.sin(an) * f.r * 0.86 * SQ;
+          ctx.fillRect(Math.round(x) - (i % 2), Math.round(y), i % 2 ? 3 : 1, 1);
+        }
+        ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
       } else if (f.k === 'nova') {                    // 서리 고리(10-22 화려하게): 처음 번쩍 + 빠르게 퍼지는 빛 고리(더하기) + 고리를 따라 솟은 얼음 조각 열둘
         const rr = f.r * Math.sqrt(k), ry = rr * 0.6, yy = f.y + 6;
         ctx.globalCompositeOperation = 'lighter';
@@ -2704,12 +2744,47 @@ const HNS = (() => {
         ctx.globalAlpha = 1 - k; ctx.fillStyle = '#776b8a';
         for (let i = 0; i < 8; i++) ctx.fillRect(Math.round(f.x + Math.cos(i) * 14 * (0.5 + k)), Math.round(f.y - 10 + Math.sin(i * 2) * 8 * (0.5 + k)), 3, 3);
         ctx.globalAlpha = 1;
-      } else if (f.k === 'rain') {
-        ctx.strokeStyle = '#f0e6c8'; ctx.lineWidth = 1;
-        for (let i = 0; i < 10; i++) {
-          const a = Math.random() * Math.PI * 2, rr = Math.random() * f.r, x = f.x + Math.cos(a) * rr, y = f.y + Math.sin(a) * rr * 0.6;
-          ctx.beginPath(); ctx.moveTo(x - 2, y - 14); ctx.lineTo(x, y); ctx.stroke();
+      } else if (f.k === 'rsky') {                    // 화살비 하늘 마법진: 납작한 금빛 고리 둘 + 거꾸로 도는 눈금 + 가운데 옅은 빛
+        const fade = Math.min(1, f.t / 0.12) * Math.min(1, (f.dur - f.t) / 0.25), rot = -f.t * 2.2, ry = f.r * 0.32;
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = 0.18 * fade; ctx.fillStyle = '#ffe9a0'; ctx.beginPath(); ctx.ellipse(f.x, f.y, f.r, ry, 0, 0, 7); ctx.fill();
+        ctx.globalAlpha = 0.8 * fade; ctx.strokeStyle = '#ffd76a'; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(f.x, f.y, f.r, ry, 0, 0, 7); ctx.stroke();
+        ctx.strokeStyle = '#fff6d0'; ctx.lineWidth = 1; ctx.beginPath(); ctx.ellipse(f.x, f.y, f.r * 0.62, ry * 0.62, 0, 0, 7); ctx.stroke();
+        ctx.fillStyle = '#fff6d0';
+        for (let i = 0; i < 12; i++) { const an = rot + i * Math.PI / 6; ctx.fillRect(Math.round(f.x + Math.cos(an) * f.r * 0.81), Math.round(f.y + Math.sin(an) * ry * 0.81), 2, 1); }
+        ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
+      } else if (f.k === 'rarrow' || f.k === 'rbig') {  // 떨어지는 화살: 금빛 빛줄(더하기) + 흰 심 + 바닥 빛 · rbig = 마지막 큰 유성 화살
+        const x = f.sx + (f.x - f.sx) * k, y = f.sy + (f.y - f.sy) * k, l = Math.hypot(f.x - f.sx, f.y - f.sy) || 1, ux = (f.x - f.sx) / l, uy = (f.y - f.sy) / l;
+        const big = f.k === 'rbig', L = big ? 26 : 9;
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = big ? 0.75 : 0.6; ctx.strokeStyle = big ? '#ffe9a0' : '#ffd76a'; ctx.lineWidth = big ? 6 : 3;
+        ctx.beginPath(); ctx.moveTo(x - ux * (L + 12), y - uy * (L + 12)); ctx.lineTo(x, y); ctx.stroke();
+        ctx.globalAlpha = 1; ctx.strokeStyle = '#fffbe6'; ctx.lineWidth = big ? 2 : 1;
+        ctx.beginPath(); ctx.moveTo(x - ux * L, y - uy * L); ctx.lineTo(x, y); ctx.stroke();
+        if (big) { ctx.globalAlpha = 0.5; ctx.fillStyle = '#fff6c0'; ctx.beginPath(); ctx.arc(x, y, 7, 0, 7); ctx.fill(); }
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.globalAlpha = 0.3 * k; ctx.fillStyle = '#ffd76a'; ctx.beginPath(); ctx.ellipse(f.x, f.y, (big ? 6 : 2) + 2 * k, ((big ? 6 : 2) + 2 * k) * SQ, 0, 0, 7); ctx.fill();
+        ctx.globalAlpha = 1;
+      } else if (f.k === 'rhit') {                    // 꽂힌 화살: 처음 빛 별(+) + 금빛 화살이 빨리 사라짐
+        const fade = k < 0.6 ? 1 : 1 - (k - 0.6) / 0.4, tx = f.x - 3 + f.tilt * 4, ty = f.y - 8;
+        ctx.globalCompositeOperation = 'lighter';
+        if (f.t < 0.12) {
+          const s = 5 * (1 - f.t / 0.12) + 1; ctx.globalAlpha = 1; ctx.fillStyle = '#fff6d0';
+          ctx.fillRect(Math.round(f.x - s), Math.round(f.y) - 1, Math.round(s * 2) + 1, 2); ctx.fillRect(Math.round(f.x) - 1, Math.round(f.y - s * 0.7), 2, Math.round(s * 1.4) + 1);
         }
+        ctx.globalAlpha = 0.7 * fade; ctx.strokeStyle = '#ffd76a'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(f.x, f.y); ctx.lineTo(tx, ty); ctx.stroke();
+        ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
+      } else if (f.k === 'rup') {                     // 시작: 하늘로 쏘아 올린 금빛 화살(빠르게 위로 · 꼬리)
+        const y = f.y - 130 * k;
+        ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.8 * (1 - k); ctx.strokeStyle = '#ffd76a'; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.moveTo(f.x, y + 22); ctx.lineTo(f.x, y); ctx.stroke(); ctx.strokeStyle = '#fffbe6'; ctx.lineWidth = 1; ctx.stroke();
+        ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
+      } else if (f.k === 'rflare') {                  // 마지막 한 방: 가운데서 솟는 빛 기둥 + 퍼지는 금빛 원
+        const rr = f.r * (0.3 + 0.9 * Math.sqrt(k)), w = 10 * (1 - k) + 2;
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = 0.5 * (1 - k); ctx.fillStyle = '#fff2b0'; ctx.beginPath(); ctx.ellipse(f.x, f.y, rr, rr * SQ, 0, 0, 7); ctx.fill();
+        ctx.globalAlpha = 0.85 * (1 - k); ctx.fillStyle = '#fffbe6'; ctx.fillRect(Math.round(f.x - w / 2), Math.round(f.y - 110), Math.round(w), 110);
+        ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
       } else if (f.k === 'shock') {                   // 충격파: 바닥에 퍼지는 고리 둘 + 처음 순간 번쩍
         const rr = f.r * (0.2 + 0.8 * Math.sqrt(k));
         ctx.globalAlpha = 0.85 * (1 - k); ctx.strokeStyle = f.c || '#ffffff'; ctx.lineWidth = Math.max(1, 3 * (1 - k));
