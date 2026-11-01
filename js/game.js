@@ -97,7 +97,7 @@ const HNS = (() => {
     const key = cx + ',' + cy;
     let c = chunks.get(key);
     if (c) return c;
-    const t = A.tiles[G.dun.key] || A.tiles.crypt, im = img(t.file);
+    const t = A.tiles[G.look] || A.tiles.crypt, im = img(t.file);
     if (!ready(im)) return null;
     c = document.createElement('canvas'); c.width = c.height = CHUNK;
     const g = c.getContext('2d');
@@ -176,8 +176,9 @@ const HNS = (() => {
     return Object.keys(D.SLOTS).map(s => P.stash.find(i => i.id === eq[s]) || null);
   }
   // 능력치 출처별(10-22 사용자 «전체 능력치 + 레벨업 스킬·장비로 오른 몫은 () 안에»): 축복 · 장비 · 레벨업(패시브 카드)
-  function statParts(worn, pass) {
+  function statParts(worn, pass, might) {
     const gear = STAT0(), card = STAT0();
+    if (might) { card.dmg += D.ENDLESS.might * might; card.hp += D.ENDLESS.might * might; }   // 무한 던전 «끝없는 힘»도 레벨업 몫
     for (const it of worn) if (it) for (const a of it.aff) gear[a.k] = (gear[a.k] || 0) + a.v * D.affixScale(it.ilvl, it.up);
     for (const k in pass || {}) card[D.PASSIVES[k].stat] += pass[k].v;
     return { bless: blessStats(), gear, card };
@@ -195,6 +196,7 @@ const HNS = (() => {
     const st = Object.assign(STAT0(), G.base);
     for (const k in G.pass) st[D.PASSIVES[k].stat] += G.pass[k].v;
     for (const it of G.worn) if (it) for (const a of it.aff) st[a.k] = (st[a.k] || 0) + a.v * D.affixScale(it.ilvl, it.up);
+    if (G.might) { st.dmg += D.ENDLESS.might * G.might; st.hp += D.ENDLESS.might * G.might; }   // 무한 던전 «끝없는 힘»(11-01 · 카드가 다 찬 뒤 한 장마다)
     st.cdr = Math.min(0.6, st.cdr); st.armor = Math.min(0.7, st.armor); st.crit = Math.min(0.75, st.crit); st.speed = Math.min(D.SPEED_CAP, st.speed);
     G.st = st;
     G.uniq = new Set(G.baseUniq);
@@ -209,7 +211,7 @@ const HNS = (() => {
 
   // ── 새 판
   function start(clsKey, dunKey) {
-    const C = D.CLASSES[clsKey], dun = D.DUNGEONS.find(d => d.key === dunKey) || D.DUNGEONS[0];
+    const C = D.CLASSES[clsKey], dun = dunKey === D.ENDLESS.key ? D.ENDLESS : D.DUNGEONS.find(d => d.key === dunKey) || D.DUNGEONS[0];
     const bs = blessStats();
     G = {
       t: 0, seed: Math.floor(Math.random() * 100000), cls: clsKey, C, dun, H: A.heroes[clsKey] || A.heroes.swordsman,
@@ -222,6 +224,8 @@ const HNS = (() => {
       abil: [], evo: {}, pass: {}, basicHits: 0,
       enemies: [], eproj: [], pproj: [], tele: [], sched: [], gems: [], coins: [], drops: [], ghosts: [], fx: [], nums: [], parts: [],
       bag: [], spawnT: 0.5, eliteT: 60, waves: {}, midDone: false, bossDone: false, boss: null, cleared: false, buff: { fury: 0, swift: 0 },
+      // 무한 던전(11-01): look = 지금 바닥·곡(다른 던전은 그 던전 · 무한 던전은 흐름마다 바뀜) · stage = 위협 단계 · phase = 흐름 번호 · might = 끝없는 힘 장수
+      look: dun.endless ? dun.phases[0].look : dun.key, stage: 1, phase: 0, bossT: 0, lastBossDeath: -99, lastBossKey: null, might: 0,
       ammo: D.GUN.mag, reloadT: 0, barrage: null, blizzard: null,
       levelQueue: 0, paused: false, over: false, god: false, uid: 1, hitStop: 0, shake: 0, potsBroken: new Set(),
       run: { elites: 0, chests: 0, legends: 0, evos: 0, dodges: 0, ultKillsMax: 0, goblins: 0, secrets: 0, pots: 0, kills: {}, bosses: {} },
@@ -258,7 +262,7 @@ const HNS = (() => {
     const m = D.MONSTERS[k], arts = mobArts(k);
     if (!m || !arts.length) return null;
     const vi = Math.min(arts.length - 1, Math.floor(Math.random() * (1 + G.t / 150)));
-    const sh = sheetOf(opt && opt.art && arts.includes(opt.art) ? opt.art : arts[vi]), sc = D.enemyScale(G.dun.tier, G.t);
+    const sh = sheetOf(opt && opt.art && arts.includes(opt.art) ? opt.art : arts[vi]), sc = G.dun.endless ? D.endlessScale(G.stage) : D.enemyScale(G.dun.tier, G.t);
     const e = { id: G.uid++, k, m, sh, x, y, hp: m.hp * sc.hp, dmg: m.dmg * sc.dmg, speed: m.speed * rand(0.9, 1.1) * (1 + 0.025 * Math.min(12, G.t / 60)), xp: m.xp,
                 r: Math.max(5, Math.min(sh.wh[0], sh.wh[1]) * 0.36), row: 0, animT: Math.random() * 2, flash: 0, kx: 0, ky: 0,
                 st: 'move', at: 0, cd: rand(0.6, 1.6), scale: 1, slow: 0, freeze: 0, z: 0, elite: null };
@@ -278,7 +282,7 @@ const HNS = (() => {
     return { x: p.x + Math.cos(a) * rr, y: p.y + Math.sin(a) * rr };
   }
   function mobPool() {
-    return G.dun.mobs.filter(([k, from]) => G.t >= from && mobArts(k).length);
+    return G.dun.mobs.filter(([k, from, , until]) => G.t >= from && !(until && G.t >= until) && mobArts(k).length);   // until = 그만 나오는 때(무한 던전)
   }
   function spawnPack() {
     // 10-22 사용자 «리스폰 때 너무 뭉쳐 나옴 → 고르게»: 무리(4~8)를 한 점(±24)에 몰지 않고 3~4마리씩 화면 둘레 여러 자리로 나눔
@@ -456,7 +460,7 @@ const HNS = (() => {
   function smashPot(o) {                              // 항아리 깨짐: 조각이 튀고 · 하나만 나옴(숨은 상자 → 자석 → 회복약 → 금화 → 빈 것)
     if (o.gone) return;
     o.gone = true; G.potsBroken.add(o.id); G.run.pots++;
-    const pal = D.POT_ART.pals[G.dun.key] || D.POT_ART.pals.crypt;
+    const pal = D.POT_ART.pals[G.look] || D.POT_ART.pals.crypt;
     burst(o.x, o.y - 4, 10, [pal[3], pal[4], pal[2], pal[1]], { spd: [25, 75], up: [30, 80], life: [0.35, 0.65], size: 2 });
     G.fx.push({ k: 'shards', x: o.x, y: o.y, t: 0, dur: 2.2, c: pal.slice(1, 5), seed: Math.abs(o.x * 7 + o.y * 13) % 97 });
     sfx('pot');
@@ -1155,6 +1159,9 @@ const HNS = (() => {
     }
     return out;
   }
+  // 무한 던전: 카드가 다 차면 레벨 업 때 «끝없는 힘»(11-01 · 공격력·최대 체력 · 끝없이 쌓임) — 상자 빈 칸엔 안 넣음(보스 상자마다 쌓이면 잡을수록 더 빨리 잡는 고리 · 봇 593장)
+  const mightCard = () => ({ type: 'might', name: '끝없는 힘', icon: '♾', rar: 2,
+    desc: `공격력 +${Math.round(D.ENDLESS.might * 100)}% · 최대 체력 +${Math.round(D.ENDLESS.might * 100)}%`, extra: `끝없이 쌓임 · 지금 ${G.might}장` });
   function offers(n) {
     const pool = cardPool(), res = [];
     while (res.length < n && pool.length) {
@@ -1168,7 +1175,10 @@ const HNS = (() => {
       if (c.type === 'pass') { const PS = D.PASSIVES[c.key]; c.val = PS.int ? (c.rar >= 2 ? 2 : 1) : PS.v * R.mul; c.desc = PS.fmt(c.val); }
       else if (c.rar > 0) c.extra = `등급 보너스: 피해 +${Math.round([0, 10, 25, 50][c.rar])}%`;
     }
-    if (!res.length) res.push({ type: 'heal', name: '회복', desc: '체력 40% 회복', rar: 0 }, { type: 'gold', name: '금화', amt: 30, desc: '금화 +' + Math.round(30 * (G.dun.gold || 1)), rar: 0 });
+    if (!res.length) {
+      if (G.dun.endless) res.push(mightCard());
+      res.push({ type: 'heal', name: '회복', desc: '체력 40% 회복', rar: 0 }, { type: 'gold', name: '금화', amt: 30, desc: '금화 +' + Math.round(30 * (G.dun.gold || 1)), rar: 0 });
+    }
     return res;
   }
   function applyCard(c) {
@@ -1186,7 +1196,8 @@ const HNS = (() => {
       G.evo[c.key] = true; G.run.evos++;
       hooks.toast && hooks.toast(`진화! ${D.EVOS[c.key].name}`);
       sfx('legend');
-    } else if (c.type === 'heal') heal(G.p.maxHp * 0.4);
+    } else if (c.type === 'might') { G.might++; recalc(); }
+    else if (c.type === 'heal') heal(G.p.maxHp * 0.4);
     else if (c.type === 'gold') addGold(c.amt || 30);
     void R;
   }
@@ -1216,7 +1227,8 @@ const HNS = (() => {
       if (c.type === 'pass') { const PS = D.PASSIVES[c.key]; c.val = PS.v * D.RARITY[c.rar].mul; c.desc = PS.fmt(c.val); }
       res.push(c);
     }
-    while (res.length < n) res.push({ type: 'gold', name: '금화', amt: 25, desc: '금화 +' + Math.round(25 * (G.dun.gold || 1)), rar: 0 });
+    while (res.length < n) res.push(G.dun.endless ? { type: 'heal', name: '회복', desc: '체력 40% 회복', rar: 0 }   // 무한 던전: 보스마다 상자라 금화가 넘침 → 회복
+      : { type: 'gold', name: '금화', amt: 25, desc: '금화 +' + Math.round(25 * (G.dun.gold || 1)), rar: 0 });
     return res;
   }
   let panelQ = [];
@@ -1249,12 +1261,14 @@ const HNS = (() => {
 
   // ── 장비(10-22 사용자 «해머워치2처럼 바로 줍고 장비 · 한 판에 하나만 들고 나오니 답답»):
   //   판 안에서 줍는 즉시 더 좋으면 바로 낌 · 주운 것은 끝나면(쓰러져도) 전부 창고로 · 판 안에서 바꿔 낀 장비는 그대로 남음
+  // 아이템 레벨 = 던전 단계 · 무한 던전은 위협 2단계마다 +1(11-01 «단계가 높을수록 좋은 장비» · 최대 +6)
+  const itemLevel = () => D.itemLevelOf(G.dun.tier) + (G.dun.endless ? Math.min(6, Math.floor((G.stage - 1) / 2)) : 0);
   function makeItem(rar) {
     const slot = pick(Object.keys(D.SLOTS));
     let bases = D.ITEM_BASES[slot];
     if (slot === 'weapon') bases = bases.filter(b => b[1] === G.C.weapon);   // 내 무기 종류만
     if (bases[0][2]) {                                // 단계 있는 바탕(무기·갑옷): 던전 순서(1~4) 이하만 · 반은 그 던전 단계, 반은 아래 단계 고르게
-      const order = D.DUNGEONS.indexOf(G.dun) + 1;
+      const order = G.dun.endless ? D.DUNGEONS.length : D.DUNGEONS.indexOf(G.dun) + 1;   // 무한 던전 = 맨 위 단계까지
       const top = bases.filter(b => b[2] === order), low = bases.filter(b => b[2] < order);
       bases = low.length && (!top.length || Math.random() < 0.5) ? low : top;
     }
@@ -1268,7 +1282,7 @@ const HNS = (() => {
       aff.push({ k, v: +(D.AFFIXES[k].v * rand(0.7, 1.3) * (1 + rar * 0.25)).toFixed(3) });
       n++;
     }
-    const it = { id: SAVE.newId(), slot, name, icon, rar, ilvl: D.itemLevelOf(G.dun.tier), up: 0, aff, cls: slot === 'weapon' ? G.cls : null };
+    const it = { id: SAVE.newId(), slot, name, icon, rar, ilvl: itemLevel(), up: 0, aff, cls: slot === 'weapon' ? G.cls : null };
     if (R.unique) {                                   // 전설: 무기면 그 무기 전용 효과도 후보 · 다른 칸은 공용만
       const pool = Object.keys(D.UNIQUES).filter(k => !D.UNIQUES[k].wpn || (slot === 'weapon' && D.UNIQUES[k].wpn === G.C.weapon));
       it.uniq = pick(pool); it.name = D.UNIQUES[it.uniq].name + ' ' + name;
@@ -1330,7 +1344,9 @@ const HNS = (() => {
       scale = sh.wh[1] < 20 ? 3 : 2;
     }
     const c = spawnRing(Math.hypot(VW, VH) / 2 - 30);
-    const sc = D.enemyScale(G.dun.tier, Math.min(G.t, 720)), bhp = D.bossHp(G.dun.tier, Math.min(G.t, 720));
+    const E = G.dun.endless && G.dun;                 // 무한 던전: 위협 단계로(보스는 체력 ×bossHp · 공격 ×bossDmg)
+    const sc = E ? D.endlessScale(G.stage, true) : D.enemyScale(G.dun.tier, Math.min(G.t, 720));
+    const bhp = E ? D.bossHp(E.tier, E.base) * E.bossHp ** (G.stage - 1) : D.bossHp(G.dun.tier, Math.min(G.t, 720));
     const e = { id: G.uid++, k: key, m: { atk: 'boss' }, sh, x: c.x, y: c.y, hp: def.hp * bhp, dmg: def.dmg * sc.dmg, speed: def.speed, xp: 0,
                 r: def.r, row: 0, animT: 0, flash: 0, kx: 0, ky: 0, st: 'move', at: 1.2, cd: 0, scale, slow: 0, freeze: 0, z: 0, elite: null,
                 boss: { key, def, final, mi: 0, rage: false, busy: 0, buff: 0 } };
@@ -1344,12 +1360,14 @@ const HNS = (() => {
   function bossDeath(e) {
     const b = e.boss;
     G.run.bosses[b.key] = (G.run.bosses[b.key] || 0) + 1;
-    for (let i = 0, n = irand(b.def.gold[0], b.def.gold[1]) / 5; i < n; i++) G.coins.push({ x: e.x + rand(-24, 24), y: e.y + rand(-18, 18), v: 5, pull: false });
-    dropItem(e.x - 8, e.y, b.final ? 2 : 1);
+    const E = G.dun.endless && G.dun, keep = E && E.phases[G.phase].keep;   // 무한 던전: 동전 ×bossGold · 장비는 bossItem 확률 · 보스가 늘 있는 흐름이면 작은 상자
+    for (let i = 0, n = irand(b.def.gold[0], b.def.gold[1]) / 5 * (E ? E.bossGold : 1); i < n; i++) G.coins.push({ x: e.x + rand(-24, 24), y: e.y + rand(-18, 18), v: 5, pull: false });
+    if (!E || Math.random() < E.bossItem) dropItem(e.x - 8, e.y, b.final || (E && G.stage >= 11) ? 2 : 1);   // 무한 던전은 보스 행진(위협 11)부터 희귀 이상
     if (b.final) dropItem(e.x + 8, e.y, 2);
     G.fx.push({ k: 'boom', x: e.x, y: e.y - 10, r: 60, t: 0, dur: 0.6, c: '#ffd36a' });
     G.shake = 0.6; sfx('slam');
-    if (G.boss === e) G.boss = null;
+    if (G.boss === e) G.boss = G.enemies.find(o => o.boss && o !== e && o.hp > 0) || null;   // 보스가 여럿이면(무한 던전) 남은 보스로
+    G.lastBossDeath = G.t;
     hooks.boss && hooks.boss(G, null);
     if (b.def.split && !e.child) {                    // 거대 젤리: 셋으로 갈라짐(그 셋도 한 번 더)
       for (let i = 0; i < 3; i++) splitSlime(e, 0.5, 1);
@@ -1362,7 +1380,7 @@ const HNS = (() => {
       hooks.toast && hooks.toast(`${G.dun.name} 정복!`);
       after(2.6, () => { hooks.clear && hooks.clear(G); });
     } else {
-      G.drops.push({ k: 'chest', n: 3, x: e.x, y: e.y, t: 0 });
+      G.drops.push({ k: 'chest', n: keep ? 1 : 3, x: e.x, y: e.y, t: 0 });
       if (Math.random() < D.MAGNET_BOSS) G.drops.push({ k: 'magnet', x: e.x + 16, y: e.y + 4, t: 0 });   // 10-22 «보스 잡을 때 일정 확률로 자석»
       hooks.toast && hooks.toast(`${b.def.name} 처치!`);
     }
@@ -1671,6 +1689,39 @@ const HNS = (() => {
   }
 
   // ── 진행 한 칸
+  // ── 무한 던전 흐름(11-01): 위협 단계(stageSec 마다 +1 · 적 세기는 makeEnemy·spawnBoss) · 무리 → 정예 → 보스 둘 → 보스 행진(D.ENDLESS.phases)
+  function setLook(k) { if (G.look !== k) { G.look = k; chunks.clear(); } }   // 바닥을 그 던전 모습으로(덩어리 그림을 새로)
+  function spawnEndlessBoss(ph) {
+    const E = G.dun, live = new Set(G.enemies.filter(e => e.boss && e.hp > 0).map(e => e.k));
+    const all = (ph.pool === 'all' ? E.mid.concat(E.big) : E.mid).filter(k => D.BOSSES[k] && !live.has(k));   // 같은 보스는 한 번에 하나
+    const fresh = all.filter(k => k !== G.lastBossKey);                                                        // 바로 앞 보스도 빼고
+    const key = pick(fresh.length ? fresh : all.length ? all : E.mid);
+    G.lastBossKey = key;
+    return spawnBoss(key, false);
+  }
+  function endlessFlow(dt) {
+    const E = G.dun, st = 1 + Math.floor(G.t / E.stageSec), up = st > G.stage;
+    if (up) G.stage = st;
+    let pi = G.phase;
+    while (pi + 1 < E.phases.length && G.t >= E.phases[pi + 1].at) pi++;
+    const ph = E.phases[pi];
+    if (pi !== G.phase) { G.phase = pi; G.bossT = ph.add || 0; setLook(ph.look); sfx('warn'); hooks.phase && hooks.phase(G, ph); }   // 흐름이 바뀜 = 띠
+    else if (up) { sfx('warn'); hooks.stage && hooks.stage(G); }                                                        // 단계만 오름 = 알림
+    let live = 0;
+    for (const e of G.enemies) if (e.boss && e.hp > 0) live++;
+    G.spawnT -= dt;
+    const cap = Math.min(150, (25 + G.lv * 2) * E.n ** (G.stage - 1)) * ph.pack * (live ? 0.55 : 1);
+    if (G.spawnT <= 0) { G.spawnT = D.SPAWN_EVERY; if (G.enemies.length < cap) spawnPack(); }
+    G.eliteT -= dt;
+    if (ph.elite && G.eliteT <= 0 && G.t > 50) { G.eliteT = rand(ph.elite[0], ph.elite[1]); spawnElite(); }
+    if (G.t >= E.wave && !G.waves[E.wave]) { G.waves[E.wave] = true; for (let i = 0; i < 3; i++) spawnElite(); hooks.toast && hooks.toast(`위협 ${G.stage}단계 — 정예 무리가 몰려온다!`); }
+    G.bossT -= dt;                                    // every = 이만큼마다 하나 · keep = 늘 이만큼(쓰러진 뒤 gap 초) · add = 이만큼마다 하나 더(max 까지)
+    if (ph.every && G.bossT <= 0) { G.bossT = ph.every; spawnEndlessBoss(ph); }
+    else if (ph.keep && live < ph.keep && G.t - G.lastBossDeath >= ph.gap) for (; live < ph.keep; live++) spawnEndlessBoss(ph);
+    if (ph.add && G.bossT <= 0) { G.bossT = ph.add; if (live < ph.max) spawnEndlessBoss(ph); }
+    if (!G.goblinT) G.goblinT = rand(150, 420);
+    if (G.t >= G.goblinT && !G.goblinDone) { G.goblinDone = true; spawnGoblin(); }
+  }
   function update(dt) {
     const p = G.p;
     G.t += dt;
@@ -1770,7 +1821,8 @@ const HNS = (() => {
     }
     // 판 흐름: 무리 · 정예 · 정예 무리(3·9분) · 중간 보스(6분) · 마지막 보스(12분) · 보물 고블린
     const R = D.RUN;
-    if (!G.cleared) {
+    if (G.dun.endless) endlessFlow(dt);
+    else if (!G.cleared) {
       G.spawnT -= dt;
       const cap = D.alive(G.t, G.lv) * (G.boss ? 0.55 : 1);
       if (G.spawnT <= 0) { G.spawnT = D.SPAWN_EVERY; if (G.enemies.length < cap) spawnPack(); }
@@ -2074,9 +2126,9 @@ const HNS = (() => {
   // 항아리: 글자 그림(D.POT_ART) → 던전 색으로 한 번 칠해 둔 캔버스 · 맨 아래 줄이 발
   const POT_CH = '.oDdmlhkbB', potCanvas = {};
   function potImg(v) {
-    const key = G.dun.key + v;
+    const key = G.look + v;
     if (potCanvas[key]) return potCanvas[key];
-    const rows = D.POT_ART.shapes[v], pal = D.POT_ART.pals[G.dun.key] || D.POT_ART.pals.crypt;
+    const rows = D.POT_ART.shapes[v], pal = D.POT_ART.pals[G.look] || D.POT_ART.pals.crypt;
     const c = document.createElement('canvas'); c.width = rows[0].length; c.height = rows.length;
     const g = c.getContext('2d');
     rows.forEach((row, y) => { for (let x = 0; x < row.length; x++) { const i = POT_CH.indexOf(row[x]); if (i > 0) { g.fillStyle = pal[i - 1]; g.fillRect(x, y, 1, 1); } } });
@@ -2826,8 +2878,7 @@ const HNS = (() => {
     ctx.globalAlpha = 1;
     // 화면 밖 상자·보스·고블린 쪽 화살표
     const arrows = G.drops.filter(d => d.k === 'chest' || (d.k === 'item' && d.item.rar >= 2)).map(d => [d.x, d.y, '#ffd34a']);
-    if (G.boss) arrows.push([G.boss.x, G.boss.y, '#ff5a4a']);
-    for (const e of G.enemies) if (e.goblin) arrows.push([e.x, e.y, '#ffe680']);
+    for (const e of G.enemies) if (e.goblin) arrows.push([e.x, e.y, '#ffe680']); else if (e.boss && e.hp > 0) arrows.push([e.x, e.y, '#ff5a4a']);   // 보스가 여럿이면 모두
     for (const [wx, wy, col] of arrows) {
       const sx = (wx + ox) * S, sy = (wy - 6 + oy) * S, W = cv.width, H = cv.height, m = 30 * dpr;
       if (sx > m && sx < W - m && sy > m * 2 && sy < H - m) continue;
@@ -2919,9 +2970,9 @@ const HNS = (() => {
   function finish() {
     if (!G || G.done) return null;
     G.done = true;
-    const P = SAVE.P, cleared = G.cleared;
+    const P = SAVE.P, cleared = G.cleared, endless = !!G.dun.endless;
     const bonus = cleared ? (G.dun.clearGold || 0) : 0;            // 정복 보너스(10-28 금화 시안 A)
-    const gold = (cleared ? G.gold : Math.floor(G.gold * 0.5)) + bonus;
+    const gold = (cleared || endless ? G.gold : Math.floor(G.gold * 0.5)) + bonus;   // 무한 던전은 쓰러져도 다 받음(11-01)
     for (const s of P.stash) delete s.isNew;
     for (const it of G.bag) { it.cls = it.slot === 'weapon' ? G.cls : null; it.isNew = true; P.stash.push(it); }
     const eq = P.equip[G.cls] = {};
@@ -2944,9 +2995,16 @@ const HNS = (() => {
     P.stats.ultKills = Math.max(P.stats.ultKills, G.run.ultKillsMax);
     for (const k of ['elites', 'chests', 'legends', 'evos', 'dodges', 'goblins', 'secrets', 'shrines']) SAVE.stat(k, G.run[k] || 0);
     if (cleared) P.stats.clears[G.dun.key] = (P.stats.clears[G.dun.key] || 0) + 1;
+    let best = null;
+    if (endless) {                                    // 무한 던전 직업마다 최고 기록(버틴 시간이 더 길면 새 기록)
+      const E = P.stats.endless || (P.stats.endless = {}), old = E[G.cls] || null;
+      const rec = { t: Math.floor(G.t), stage: G.stage, bosses: Object.values(G.run.bosses).reduce((a, b) => a + b, 0), lv: G.lv, kills: G.kills };
+      best = { rec, old, isNew: !old || rec.t > old.t };
+      if (best.isNew) E[G.cls] = rec;
+    }
     const done = checkAch();
     SAVE.save();
-    return { gold, bonus, scrap, scrapped, kept: G.bag.length, ach: done };
+    return { gold, bonus, scrap, scrapped, kept: G.bag.length, ach: done, best };
   }
   function checkAch() {                               // 끝낸 도전 과제 → 보상(금화·해금)
     const P = SAVE.P, done = [];
@@ -2958,15 +3016,17 @@ const HNS = (() => {
       const g = a.gift;
       if (g.gold) P.gold += g.gold;
       if (g.abil) { P.unlocked.abil = P.unlocked.abil || []; if (!P.unlocked.abil.includes(g.abil)) P.unlocked.abil.push(g.abil); }
-      if (g.dungeon && !P.unlocked.dungeons.includes(g.dungeon)) P.unlocked.dungeons.push(g.dungeon);
+      if (g.dungeon && !P.unlocked.dungeons.includes(g.dungeon)) { P.unlocked.dungeons.push(g.dungeon); if (g.dungeon === D.ENDLESS.key) done.endless = true; }
       if (g.cls && !P.unlocked.classes.includes(g.cls)) P.unlocked.classes.push(g.cls);
     }
+    // 11-01 전에 거인 골짜기를 정복한 기록엔 무한 던전 열림이 없음 → 한 번 열어 줌
+    if (P.ach.valley && !P.unlocked.dungeons.includes(D.ENDLESS.key)) { P.unlocked.dungeons.push(D.ENDLESS.key); done.endless = true; }
     return done;
   }
 
   return {
     init, start, resize, useSkill, useUlt, dodge, useMove, img, pickCard, reroll, wear, finish, checkAch, nextPanel, profileStats, itemScore, ultReady: () => !!G && G.ultCd <= 0,
-    statParts: cls => cls ? statParts(equippedItems(cls), null) : statParts(G.worn, G.pass),   // cls 없으면 지금 판(레벨업 몫 포함)
+    statParts: cls => cls ? statParts(equippedItems(cls), null) : statParts(G.worn, G.pass, G.might),   // cls 없으면 지금 판(레벨업 몫 포함)
     giveUp() { if (G && !G.over && !G.done) { G.over = true; G.gaveUp = true; } },
     get G() { return G; },
     setCtrl(v) { ctrl = v; joy = null; dest = null; }, get ctrl() { return ctrl; },
@@ -2978,7 +3038,7 @@ const HNS = (() => {
       god() { G.god = !G.god; return G.god; },
       level() { gainXp(D.xpNeed(G.lv) - G.xp + 0.01); },
       fill() { G.ultCd = 0; },
-      boss(final) { spawnBoss(final ? G.dun.boss : G.dun.mid, !!final); },
+      boss(final) { if (G.dun.endless) return spawnEndlessBoss({ pool: final ? 'all' : 'mid' }); spawnBoss(final ? G.dun.boss : G.dun.mid, !!final); },
       elite() { return spawnElite(); },
       goblin() { spawnGoblin(); },
       chest(n) { G.drops.push({ k: 'chest', n: n || 1, x: G.p.x + 20, y: G.p.y, t: 0 }); },

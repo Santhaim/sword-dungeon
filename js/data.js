@@ -270,6 +270,33 @@ const DATA = (() => {
   D.enemyScale = (tier, sec) => { const m = sec / 60; return { hp: 0.9 * (0.4 + 0.6 * tier) * (1 + 0.25 * m + 0.02 * m * m), dmg: (0.6 + tier * 0.2) * (0.6 + 0.11 * m) }; };
   D.bossHp = (tier, sec) => { const m = sec / 60; return (0.4 + 0.6 * tier) * (1 + 0.2 * m + 0.01 * m * m); };   // 보스는 덜 가파르게(싸움 1~2분)
   D.alive = (sec, lv) => Math.min(150, 18 + Math.floor(sec / 8) + lv * 2);
+  // ── 무한 던전(11-01 사용자 «무한 던전 하나 만들어서 끊임없이 몰려오고 1~2분마다 적들이 강해지고 나중에는 보스몹들만» → 시안 흐름 그대로)
+  //   거인 골짜기를 정복하면 열림 · 정복 없이 쓰러질 때까지 · 금화는 쓰러져도 다 받음 · 직업마다 최고 기록(P.stats.endless)
+  //   위협 단계 = stageSec 마다 +1 → 적 체력 ×hp · 공격 ×dmg · 수 ×n 씩 곱으로 쌓임(보스는 체력 ×bossHp · 공격 ×bossDmg) · 1단계 세기 = 거인 골짜기 첫 1분(tier · base)
+  //   mobs = [몬스터, 나오기 시작(초), 무게, 그만 나오는 때(초 · 없으면 끝까지)]
+  //   보스 보상: bossGold = 동전 금화 배율 · bossItem = 장비 떨굴 확률 · 보스가 늘 있는 흐름(keep)에선 작은 상자(한 칸 · 카드가 다 찼으면 금화 대신 회복)
+  //   봇(11-01 · 축복 5단계 = 거인 골짜기를 겨우 깨는 세기): 처음 값(공격 ×1.10 · 보스 체력 ×1.15 · 보스마다 장비·큰 상자·동전 그대로)으론 30~40분 버팀 · 금화 7만~14만
+  //     → 아래 값(장비 없는 봇 10판씩): 축복 5 가운데 19분(13~25) · 축복 8 21분 · 축복 3 은 3분 정예 무리에서 거의 쓰러짐(골짜기와 같음) · 금화 1분에 450~580(골짜기의 1.25배쯤)
+  //   phases(at 초부터) — look = 바닥·곡(그 던전 모습) · pack = 무리 배율 · elite = 정예 간격 · every = 이만큼마다 보스 하나 · keep = 보스를 늘 이만큼(쓰러지면 gap 초 뒤 다음)
+  //     add·max = add 초마다 보스 한 마리 더(살아 있는 보스가 max 아래일 때) — 빨리 잡으면 덜 쌓이고 못 잡으면 쌓임(봇: «늘 N마리»만이면 공격력이 버티는 데 거의 안 보탬)
+  //     pool = 'mid'(중간 보스만) · 'all'(마지막 보스까지) · say·c = 흐름이 바뀔 때 띠 글·색
+  //   might = 카드가 다 차면 나오는 «끝없는 힘» 한 장 몫(공격력·최대 체력)
+  D.ENDLESS = {
+    key: 'endless', name: '무한 던전', endless: true, tier: 2.7, base: 60, gold: 2.5, clearGold: 0,
+    stageSec: 90, hp: 1.2, dmg: 1.12, n: 1.08, bossHp: 1.18, bossDmg: 1.18, might: 0.04, wave: 180, bossGold: 0.15, bossItem: 0.4,
+    mobs: [['slime', 0, 6, 240], ['bat', 0, 5, 300], ['skeleton', 0, 7], ['goblin', 0, 7], ['wolf', 30, 6], ['skel_archer', 60, 4], ['boar', 60, 5], ['orc', 90, 6], ['shaman', 120, 3], ['ogre', 180, 4]],
+    mid: ['giant_slime', 'jelly_blue', 'jelly_purple', 'boar_king', 'shaman_elder', 'golem'],
+    big: ['skeleton_king', 'alpha_wolf', 'orc_warlord', 'ogre_chief'],
+    phases: [
+      { at: 0, name: '무리', look: 'crypt', pack: 1, elite: [55, 85] },
+      { at: 360, name: '정예의 시간', look: 'den', pack: 1, elite: [22, 36], every: 180, pool: 'mid', say: '3분마다 보스 · 정예가 자주', c: '#c27aff' },
+      { at: 720, name: '보스 둘', look: 'fort', pack: 0.6, elite: [40, 60], keep: 2, gap: 12, pool: 'all', say: '보스가 두 마리씩', c: '#ff9a5a' },
+      { at: 900, name: '보스 행진', look: 'valley', pack: 0, keep: 2, gap: 3, add: 25, max: 3, pool: 'all', say: '이제 보스만 나온다', c: '#ff5a7a' },
+      { at: 1080, name: '보스 행진', look: 'valley', pack: 0, keep: 3, gap: 3, add: 20, max: 4, pool: 'all', say: '이제 보스가 세 마리씩', c: '#ff5a7a' },
+      { at: 1260, name: '보스 행진', look: 'valley', pack: 0, keep: 4, gap: 3, add: 15, max: 5, pool: 'all', say: '이제 보스가 네 마리씩', c: '#ff3a5a' },
+    ],
+  };
+  D.endlessScale = (st, boss) => { const E = D.ENDLESS, s = D.enemyScale(E.tier, E.base); return { hp: s.hp * E.hp ** (st - 1), dmg: s.dmg * (boss ? E.bossDmg : E.dmg) ** (st - 1) }; };
   D.SPAWN_EVERY = 0.35; D.PACK = [4, 8];
   D.xpNeed = lv => 10 + lv * 8 + lv * lv;
   D.GOLD_DROP = 0.025; D.HEAL_DROP = 0.008; D.HEAL_PCT = 0.25; D.PICKUP = 40;
@@ -427,7 +454,7 @@ const DATA = (() => {
     { id: 'shrine', name: '순례자', desc: '던전의 제단을 10번 밟는다', need: P => [P.stats.shrines || 0, 10], gift: { gold: 250 } },
     { id: 'fort', name: '고블린 요새 정복', desc: '오크 대장을 쓰러뜨린다', need: P => [P.stats.bosses.orc_warlord || 0, 1], gift: { dungeon: 'valley', cls: 'mage' } },
     { id: 'ult30', name: '쓸어버리기', desc: '필살기 한 번에 30마리', need: P => [P.stats.ultKills, 30], gift: { gold: 400 } },
-    { id: 'valley', name: '거인 골짜기 정복', desc: '오우거 족장을 쓰러뜨린다', need: P => [P.stats.bosses.ogre_chief || 0, 1], gift: { gold: 1500 } },
+    { id: 'valley', name: '거인 골짜기 정복', desc: '오우거 족장을 쓰러뜨린다', need: P => [P.stats.bosses.ogre_chief || 0, 1], gift: { gold: 1500, dungeon: 'endless' } },   // 11-01 무한 던전이 열림
   ];
   D.START_ABIL = ['wave', 'hawk', 'turret', 'orbs', 'orbit', 'knives', 'axe', 'flame', 'miasma', 'tornado'];   // 처음부터 카드에 나오는 능력(낙뢰·서리 고리는 도전 과제로 해금)
   return D;

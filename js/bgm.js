@@ -242,7 +242,7 @@ const BGM = (() => {
   return {
     play,
     // 판 따라가기: 보스가 있으면 보스 곡 · 아니면 그 던전 곡 · 6분부터 세기 1 · 9분부터 2(섹션 끝에서 바뀜)
-    follow(G) { heat = !G ? 0 : G.t >= 540 ? 2 : G.t >= 360 ? 1 : 0; play(!G ? 'town' : G.boss ? 'boss' : G.dun.key); },
+    follow(G) { heat = !G ? 0 : G.t >= 540 ? 2 : G.t >= 360 ? 1 : 0; play(!G ? 'town' : G.boss ? 'boss' : G.look || G.dun.key); },   // look = 지금 바닥(무한 던전은 흐름마다 바뀜)
     get on() { return on; },
     set on(v) {
       on = !!v;

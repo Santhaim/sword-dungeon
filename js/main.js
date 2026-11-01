@@ -23,12 +23,13 @@
   }
   const fmtTime = t => { const s = Math.max(0, Math.floor(t)); return String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0'); };
   const clsOK = k => !!ART.heroes[k];                  // 그림이 있는 직업만 고를 수 있음
+  const stageTxt = () => { const s = D.ENDLESS.stageSec; return (s >= 60 ? Math.floor(s / 60) + '분' : '') + (s % 60 ? (s >= 60 ? ' ' : '') + (s % 60) + '초' : ''); };   // 무한 던전 «1분 30초»
 
   // ── 화면 위 글자(판 안)
   const cool = (b, k) => { b.style.setProperty('--cd', (Math.max(0, Math.min(1, k)) * 100).toFixed(1) + '%'); b.classList.toggle('wait', k > 0); };
   // 스킬 버튼 칸 → 스킬 번호(10-22 회피를 빼고 몸 옮기기 스킬을 그 자리에): 자동 스킬은 위쪽 S2 · 손 스킬은 큰 회피 칸 · S1 은 숨김
   const slotOf = (C, btn) => btn === 'bDodge' ? C.skills.indexOf(C.manual) : btn === 'bS2' ? C.skills.findIndex(k => k !== C.manual) : -1;
-  let abilSig = '';
+  let abilSig = '', bossSig = '';
   function hud(G) {
     const p = G.p;
     BGM.follow(G);                                    // 배경음: 그 던전 곡 · 보스가 있으면 보스 곡 · 6·9분에 세짐
@@ -38,9 +39,11 @@
     $('xpFill').style.width = Math.min(100, 100 * G.xp / D.xpNeed(G.lv)) + '%';
     $('hKills').textContent = '☠ ' + G.kills;
     $('hGold').textContent = '💰 ' + G.gold;
-    const tm = $('hTime');
-    tm.textContent = fmtTime(G.t);
-    tm.classList.toggle('late', G.t >= D.RUN.boss - 60 && !G.bossDone);
+    const tm = $('hTime'), E = G.dun.endless && G.dun;
+    tm.textContent = (E ? '♾ ' : '') + fmtTime(G.t);
+    tm.classList.toggle('late', !E && G.t >= D.RUN.boss - 60 && !G.bossDone);
+    $('hStage').hidden = !E;                          // 무한 던전 위협 단계 + 다음 단계까지 막대(11-01)
+    if (E) { $('hStageN').textContent = G.stage; $('hStageFill').style.width = (100 * (G.t % E.stageSec) / E.stageSec).toFixed(1) + '%'; }
     for (const id of ['bS2', 'bDodge']) {
       const i = slotOf(G.C, id);
       if (i >= 0) cool($(id), G.cds[i] / G.cdMax[i]); else if (id === 'bDodge') cool($(id), G.dodgeCd / G.dodgeMax);   // 손 스킬이 없는 직업이면 예전 회피
@@ -49,9 +52,11 @@
     $('bUlt').style.setProperty('--g', (Math.max(0, Math.min(1, g)) * 100).toFixed(1) + '%');
     $('bUlt').classList.toggle('full', g >= 1);
     $('buffs').textContent = (G.buff.fury > 0 ? `🔥 공격 ${Math.ceil(G.buff.fury)}  ` : '') + (G.buff.swift > 0 ? `💨 속도 ${Math.ceil(G.buff.swift)}` : '');
-    const b = G.boss;
-    $('bossBar').hidden = !b;
-    if (b) { $('bossFill').style.width = (100 * Math.max(0, b.hp) / b.maxHp) + '%'; $('bossBar').classList.toggle('rage', !!b.boss.rage); }
+    // 보스 막대: 살아 있는 보스마다 나란히(11-01 무한 던전은 둘·셋)
+    const bs = G.enemies.filter(e => e.boss && e.hp > 0), bar = $('bossBar'), bsig = bs.map(e => e.id).join();
+    bar.hidden = !bs.length;
+    if (bsig !== bossSig) { bossSig = bsig; bar.innerHTML = bs.map(e => `<div class="bb"><span>${esc(e.boss.def.name)}</span><div class="bar boss"><b></b></div></div>`).join(''); }
+    bs.forEach((e, i) => { const el = bar.children[i]; el.classList.toggle('rage', !!e.boss.rage); el.querySelector('b').style.width = (100 * Math.max(0, e.hp) / e.maxHp) + '%'; });
     // 가진 능력·패시브(작은 아이콘 + 단계)
     const sig = G.abil.map(a => a.k + a.lv).join() + '|' + Object.keys(G.evo).join() + '|' + Object.entries(G.pass).map(([k, v]) => k + v.lv).join();
     if (sig !== abilSig) {
@@ -236,7 +241,7 @@
     setMode(true);
     BGM.follow(null);                                 // 마을 곡
     const done = HNS.checkAch();
-    if (done.length) SAVE.save();
+    if (done.length || done.endless) SAVE.save();
     const achNew = done.length;
     open(`<div class="town">
       <div class="th"><b>던전 원정대</b><span class="gold">💰 ${P().gold}</span></div>
@@ -245,6 +250,7 @@
       box.querySelectorAll('.tabs button').forEach(b => b.onclick = () => { click(); showTown(b.dataset.t); });
       ({ go: townGo, gear: townGear, bless: townBless, smith: townSmith, ach: townAch, opt: townOpt })[tab](box.querySelector('#tc'));
       for (const a of done) loot(`🏆 ${esc(a.name)}`, '#ffcf5a');
+      if (done.endless) loot('♾ 무한 던전이 열렸습니다 — 출정 탭', '#c8a8ff', 5);
     }, true);
   }
   // 같은 탭을 다시 그림 — 창(스크롤) 위치는 그대로(10-23 사용자 «분해 누르면 창이 위로 올라감 · 강화하면 위치가 바뀜»)
@@ -264,6 +270,10 @@
       const stars = '★'.repeat(i + 1);
       return `<button data-d="${d.key}" class="dun ${pf.dungeon === d.key ? 'on' : ''}" ${ok ? '' : 'disabled'}><b>${d.name}</b><small>${ok ? stars + (d.gold > 1 ? ` · 💰×${d.gold}` : '') + (cl ? ` · 정복 ${cl}` : '') : '잠김'}</small></button>`;
     }).join('');
+    // 무한 던전(11-01 · 거인 골짜기 정복하면 열림): 직업마다 최고 기록
+    const eOpen = pf.unlocked.dungeons.includes(D.ENDLESS.key), rec = (pf.stats.endless || {})[pf.cls];
+    const endless = `<button data-d="${D.ENDLESS.key}" class="dun end ${pf.dungeon === D.ENDLESS.key ? 'on' : ''}" ${eOpen ? '' : 'disabled'}><b>♾ ${D.ENDLESS.name}</b>
+      <small>${eOpen ? `쓰러질 때까지 · ${stageTxt()}마다 강해짐 · 💰×${D.ENDLESS.gold} · ${rec ? `${C.name} 최고 ${fmtTime(rec.t)} · 위협 ${rec.stage}단계` : '아직 기록 없음'}` : '잠김 — 거인 골짜기를 정복하면 열림'}</small></button>`;
     const S = D.SKILLS, U = D.ULTS[C.ult];
     // 다음 목표(홀즈처럼 늘 하나): 아직 못 한 도전 과제 중 진행이 가장 많이 된 것
     const next = D.ACH.filter(a => !pf.ach[a.id]).map(a => { const [v, n] = a.need(pf); return { a, v, n, k: v / n }; }).sort((x, y) => y.k - x.k)[0];
@@ -274,7 +284,7 @@
         <span class="dim">${C.skills.map(k => `${S[k].icon} ${S[k].name}`).join(' · ')} · ${U.icon} ${U.name}</span></div></div>
       <div class="gr">
         <div class="lbl">직업</div><div class="row wrap" id="cls">${cls}</div>
-        <div class="lbl">던전 (12분 · 6분 중간 보스 · 12분 마지막 보스)</div><div class="duns" id="duns">${duns}</div>
+        <div class="lbl">던전 (12분 · 6분 중간 보스 · 12분 마지막 보스)</div><div class="duns" id="duns">${duns}${endless}</div>
         ${installEvt ? '<div class="row"><button id="inst" class="inst">📲 폰에 앱으로 설치</button></div>' : ''}
         <div class="row"><button id="fs">전체 화면으로 출정</button><button class="main" id="go">출정</button></div>
         ${goal}
@@ -382,7 +392,7 @@
   }
   function townAch(el) {
     const pf = P();
-    const gift = g => [g.gold && `💰${g.gold}`, g.abil && `능력 «${D.ABILITIES[g.abil].name}» 해금`, g.dungeon && `던전 «${D.DUNGEONS.find(d => d.key === g.dungeon).name}» 열림`,
+    const gift = g => [g.gold && `💰${g.gold}`, g.abil && `능력 «${D.ABILITIES[g.abil].name}» 해금`, g.dungeon && `던전 «${(D.DUNGEONS.find(d => d.key === g.dungeon) || D.ENDLESS).name}» 열림`,
                        g.cls && `직업 «${D.CLASSES[g.cls].name}» 열림`].filter(Boolean).join(' · ');
     el.innerHTML = `<div class="ach">${D.ACH.map(a => {
       const [v, n] = a.need(pf), ok = pf.ach[a.id];
@@ -405,7 +415,7 @@
     for (const z of [0, 1, 2]) el.querySelector('#z' + z).onclick = () => { pf.zoom = z; HNS.setZoom(z); SAVE.save(); click(); redrawTown(); };
     el.querySelector('#fs').onclick = () => fullscreen();
     el.querySelector('#all').onclick = () => {
-      pf.unlocked.classes = Object.keys(D.CLASSES); pf.unlocked.dungeons = D.DUNGEONS.map(d => d.key);
+      pf.unlocked.classes = Object.keys(D.CLASSES); pf.unlocked.dungeons = D.DUNGEONS.map(d => d.key).concat(D.ENDLESS.key);
       pf.unlocked.abil = Object.keys(D.ABILITIES); pf.gold += 10000; SAVE.save(); SFX.play('chest'); showTown('opt'); toast('모두 열렸습니다');
     };
     let armed = false;
@@ -429,16 +439,16 @@
     $('bUlt').querySelector('span').textContent = D.ULTS[C.ult].short;
     const mv = slotOf(C, 'bDodge');                   // 회피 칸 = 그 직업의 몸 옮기기(손으로)
     $('bDodge').querySelector('span').textContent = mv >= 0 ? D.SKILLS[C.skills[mv]].short : D.DODGE.short;
-    abilSig = ''; $('abil').innerHTML = ''; $('loot').innerHTML = '';
+    abilSig = ''; bossSig = ''; $('abil').innerHTML = ''; $('loot').innerHTML = '';
     HNS.start(pf.cls, pf.dungeon);
     HNS.pause(false);
-    const dun = D.DUNGEONS.find(d => d.key === pf.dungeon);
-    banner('12분 버티고 마지막 보스를 쓰러뜨려라', dun.name);
+    if (HNS.G.dun.endless) banner(`쓰러질 때까지 버텨라 · ${stageTxt()}마다 강해진다`, '♾ ' + D.ENDLESS.name, '#c8a8ff');
+    else banner('12분 버티고 마지막 보스를 쓰러뜨려라', HNS.G.dun.name);
   }
   // 레벨 업: 카드 셋(등급 색) · 다시 뽑기
   function cardHtml(c, i) {
     const R = D.RARITY[c.rar || 0];
-    const kind = { skill: '직업 스킬', abil: '공격 스킬', pass: '패시브', evo: '진화', heal: '회복', gold: '금화' }[c.type];
+    const kind = { skill: '직업 스킬', abil: '공격 스킬', pass: '패시브', evo: '진화', heal: '회복', gold: '금화', might: '무한 던전' }[c.type];
     const lv = c.type === 'evo' ? '진화' : c.isNew ? '새로' : c.lv ? 'Lv ' + c.lv : '';
     return `<div class="card r${c.rar || 0}" data-i="${i}" style="--rc:${R.color}">
       <div class="rr">${R.name}</div><div class="ic">${c.icon || (c.type === 'gold' ? '💰' : '❤')}</div>
@@ -494,12 +504,16 @@
       box.querySelector('#ok').onclick = () => { close(); HNS.nextPanel(); };
     }, true);
   }
+  let phaseAt = 0;                                    // 무한 던전 흐름 띠를 띄운 때(바로 뒤 알림은 띠가 대신함)
   function onBoss(G, e) {
     if (!e) return;
+    if (G.dun.endless) { if (performance.now() - phaseAt > 1500) toast(`👑 ${e.boss.def.name} 출현!`); return; }   // 무한 던전은 보스가 잦음 → 알림 한 줄
     const kind = e.boss.final ? '마지막 보스' : (G.dun && e.boss.key !== G.dun.mid ? '보스 출현' : '중간 보스');   // 3·9분 보스(지하 묘지 젤리) = «보스 출현»
     banner(kind, e.boss.def.name, e.boss.final ? '#ff6a5a' : '#ffb04a');
-    $('bossName').textContent = e.boss.def.name;
   }
+  // 무한 던전(11-01): 흐름이 바뀌면 띠 · 위협 단계만 오르면 알림
+  function onPhase(G, ph) { phaseAt = performance.now(); banner(`위협 ${G.stage}단계 · ${ph.say}`, ph.name, ph.c); }
+  function onStage(G) { if (performance.now() - phaseAt > 1500) toast(`위협 ${G.stage}단계 — 적이 더 강해졌다`); }
   // 장비를 주우면(10-22 «해머워치2처럼 바로 줍고 장비»): 더 좋으면 이미 장착(«장착!») · 아니면 줄에 «장착» 단추(5초 · 멈추지 않고 바로 장착)
   //   10-23 사용자 «끼기·빼기 말고 다른 말» → 장착·해제(판 중 가방은 «장착 중»)
   function onItem(G, it, on) {
@@ -517,7 +531,7 @@
     const ps = Object.entries(G.pass).map(([k, v]) => `<span>${D.PASSIVES[k].icon} ${D.PASSIVES[k].name} ${v.lv}</span>`);
     const C = G.C, sk = [[C.basic, 'basic'], ...C.skills.map((k, i) => [D.SKILLS[k].name, 's' + i]), [D.ULTS[C.ult].name, 'ult']]
       .map(([n, k]) => `<span>${n} ${G.skLv[k]}</span>`);
-    return `<div class="build">${sk.join('')}</div>
+    return `<div class="build">${sk.join('')}${G.might ? `<span>♾ 끝없는 힘 ${G.might}</span>` : ''}</div>
       <div class="build"><span class="dim">공격 스킬 ${G.abil.length}/${D.MAX_ABIL}</span>${ab.join('')}</div>
       <div class="build"><span class="dim">패시브 ${ps.length}/${D.MAX_PASS}</span>${ps.join('')}</div>`;
   }
@@ -530,7 +544,7 @@
     // 최근에 주운 것부터 · 장착한 것은 위 칸에만(10-23 «인벤토리에 장비템은 안 보이게») · 지금 장착한 것과 견줌
     const bag = G.bag.slice().reverse().filter(it => !G.worn.includes(it)).map(it => { const i = slots.indexOf(it.slot);
       return itemHtml(it, `data-id="${it.id}"`, '<div class="row"><button data-a="wear">장착</button></div>', G.worn[i] || 'empty'); }).join('');
-    open(`<h2>일시정지 <small>${fmtTime(G.t)} · ${G.dun.name}</small></h2>
+    open(`<h2>일시정지 <small>${fmtTime(G.t)} · ${G.dun.name}${G.dun.endless ? ` · 위협 ${G.stage}단계` : ''}</small></h2>
       ${buildHtml(G)}
       <details open><summary>능력치 — 괄호 = 축복·장비·레벨업으로 오른 몫</summary>${statTable(G.C, HNS.statParts())}</details>
       <details ${G.bag.length ? 'open' : ''}><summary>장비 — 장착한 것 · 이번 판에 주운 것 ${G.bag.length}개(끝나면 모두 창고로)</summary>
@@ -576,10 +590,19 @@
     });
   }
   function statsHtml(G) {
-    return `<div class="stat">버틴 시간 ${fmtTime(G.t)} · 레벨 ${G.lv} · 처치 ${G.kills}${G.run.elites ? ` · 정예 ${G.run.elites}` : ''}${G.run.goblins ? ' · 보물 고블린!' : ''}</div>`;
+    const boss = Object.values(G.run.bosses).reduce((a, b) => a + b, 0);
+    return `<div class="stat">버틴 시간 ${fmtTime(G.t)}${G.dun.endless ? ` · 위협 ${G.stage}단계 · 보스 ${boss}` : ''} · 레벨 ${G.lv} · 처치 ${G.kills}${G.run.elites ? ` · 정예 ${G.run.elites}` : ''}${G.run.goblins ? ' · 보물 고블린!' : ''}</div>`;
+  }
+  // 무한 던전 기록(11-01 · 직업마다 버틴 시간이 더 길면 새 기록)
+  function recordHtml(res) {
+    const b = res.best;
+    if (!b) return '';
+    const r = b.rec, o = b.old, was = o ? ` <small>(${b.isNew ? '전 기록' : '최고'} ${fmtTime(o.t)} · 위협 ${o.stage}단계)</small>` : '';
+    return `<div class="rec ${b.isNew ? 'new' : ''}">${b.isNew ? '🏅 새 최고 기록!' : '♾ 이번 기록'} <b>${fmtTime(r.t)}</b> · 위협 <b>${r.stage}</b>단계 · 보스 <b>${r.bosses}</b>${was}</div>`;
   }
   function resultHtml(res) {
-    const ach = res.ach.map(a => `<div class="lt" style="color:#ffcf5a">🏆 ${esc(a.name)} 달성!</div>`).join('');
+    const ach = res.ach.map(a => `<div class="lt" style="color:#ffcf5a">🏆 ${esc(a.name)} 달성!</div>`).join('')
+      + (res.ach.endless ? '<div class="lt" style="color:#c8a8ff">♾ 무한 던전이 열렸습니다 — 출정 탭에서</div>' : '');
     return `<div class="stat">금화 +${res.gold}${res.bonus ? ` (정복 보너스 +${res.bonus} 포함)` : ''}${res.scrap ? ` · 창고가 넘쳐 ${res.scrapped}개 분해 +${res.scrap}` : ''} → 💰 ${P().gold}</div>${ach}`;
   }
   // 주운 장비(10-22 «한 판에 하나만 들고 나오니 답답» → 전부 창고로): 좋은 등급부터 몇 개만 보여 주고 나머지는 «외 N개»
@@ -598,7 +621,7 @@
       const res = HNS.finish();
       if (!res) return;
       open(`<h2>${quit ? '원정 포기' : '쓰러졌다…'}</h2>${statsHtml(G)}${buildHtml(G)}
-        <p>쓰러지면 금화는 절반 · 주운 장비는 그대로 창고로</p>${keptHtml(G)}${resultHtml(res)}
+        ${recordHtml(res)}<p>${G.dun.endless ? '무한 던전은 쓰러져도 금화를 모두 받음' : '쓰러지면 금화는 절반'} · 주운 장비는 그대로 창고로</p>${keptHtml(G)}${resultHtml(res)}
         <div class="row"><button id="ot">마을로</button><button class="main" id="or">다시 출정</button></div>`, endButtons);
     }, quit ? 0 : 900);
   }
@@ -609,7 +632,7 @@
       <div class="row"><button id="ot">마을로</button><button class="main" id="or">다시 출정</button></div>`, endButtons);
   }
 
-  HNS.init($('cv'), ART, { hud, over: G => showOver(G, false), clear: showClear, toast, levelup: showCards, chest: showChest, boss: onBoss, item: onItem });
+  HNS.init($('cv'), ART, { hud, over: G => showOver(G, false), clear: showClear, toast, levelup: showCards, chest: showChest, boss: onBoss, item: onItem, phase: onPhase, stage: onStage });
   HNS.setZoom(P().zoom || 0);
   HNS.setCtrl(P().ctrl || 'auto');
   $('bPause').addEventListener('click', showPause);
