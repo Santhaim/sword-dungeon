@@ -234,7 +234,7 @@
 
   // ── 마을
   let tab = 'go';
-  const TABS = [['go', '출정'], ['gear', '장비'], ['bless', '축복'], ['smith', '대장간'], ['ach', '도전'], ['opt', '설정']];
+  const TABS = [['go', '출정'], ['gear', '장비'], ['tree', '스킬'], ['bless', '축복'], ['smith', '대장간'], ['ach', '도전'], ['opt', '설정']];
   function showTown(t) {
     if (t) tab = t;
     HNS.pause(true);
@@ -245,12 +245,12 @@
     const achNew = done.length;
     open(`<div class="town">
       <div class="th"><b>던전 원정대</b><span class="gold">💰 ${P().gold}</span></div>
-      <div class="tabs">${TABS.map(([k, n]) => `<button data-t="${k}" class="${tab === k ? 'on' : ''}">${n}${k === 'ach' && achNew ? ' •' : ''}</button>`).join('')}</div>
+      <div class="tabs">${TABS.map(([k, n]) => `<button data-t="${k}" class="${tab === k ? 'on' : ''}">${n}${(k === 'ach' && achNew) || (k === 'tree' && treeLeft(P().cls) > 0) ? ' •' : ''}</button>`).join('')}</div>
       <div class="tc" id="tc"></div></div>`, box => {
       box.querySelectorAll('.tabs button').forEach(b => b.onclick = () => { click(); showTown(b.dataset.t); });
-      ({ go: townGo, gear: townGear, bless: townBless, smith: townSmith, ach: townAch, opt: townOpt })[tab](box.querySelector('#tc'));
+      ({ go: townGo, gear: townGear, tree: townTree, bless: townBless, smith: townSmith, ach: townAch, opt: townOpt })[tab](box.querySelector('#tc'));
       for (const a of done) loot(`🏆 ${esc(a.name)}`, '#ffcf5a');
-      if (done.endless) loot('♾ 무한 던전이 열렸습니다 — 출정 탭', '#c8a8ff', 5);
+      if (done.endless) toast('♾ 무한 던전이 열렸습니다 — 출정 탭');   // 마을에선 loot 줄이 숨겨져 있음 → 알림(창 위)
     }, true);
   }
   // 같은 탭을 다시 그림 — 창(스크롤) 위치는 그대로(10-23 사용자 «분해 누르면 창이 위로 올라감 · 강화하면 위치가 바뀜»)
@@ -280,14 +280,14 @@
     const goal = next ? `<div class="goal">🎯 다음 목표: <b>${next.a.name}</b> — ${next.a.desc} <span>${Math.min(next.v, next.n)} / ${next.n}</span></div>` : '<div class="goal">🏆 도전 과제를 모두 끝냈습니다!</div>';
     el.innerHTML = `<div class="go">
       <div class="gl"><canvas id="hero" width="96" height="96"></canvas>
-        <div class="cdesc"><b>${C.name}</b><span>${esc(C.desc)}</span>
+        <div class="cdesc"><b>${C.name} <small class="dim">직업 Lv ${jobOf(pf.cls).lv}</small></b><span>${esc(C.desc)}</span>
         <span class="dim">${C.skills.map(k => `${S[k].icon} ${S[k].name}`).join(' · ')} · ${U.icon} ${U.name}</span></div></div>
       <div class="gr">
         <div class="lbl">직업</div><div class="row wrap" id="cls">${cls}</div>
         <div class="lbl">던전 (12분 · 6분 중간 보스 · 12분 마지막 보스)</div><div class="duns" id="duns">${duns}${endless}</div>
         ${installEvt ? '<div class="row"><button id="inst" class="inst">📲 폰에 앱으로 설치</button></div>' : ''}
         <div class="row"><button id="fs">전체 화면으로 출정</button><button class="main" id="go">출정</button></div>
-        ${goal}
+        ${treeLeft(pf.cls) > 0 ? `<div class="goal">⭐ 스킬 나무에 찍을 점수 <b>${treeLeft(pf.cls)}</b> — 스킬 탭에서</div>` : ''}${goal}
         <details class="pst" open><summary>${C.name} 능력치 <small class="dim">— 괄호 = 축복·장비로 오른 몫</small></summary>${statTable(C, HNS.statParts(pf.cls))}</details>
         <details><summary>조작법</summary><div class="help">
           <b>왼손</b><span>화면 왼쪽을 눌러 끌면 이동</span>
@@ -353,6 +353,47 @@
       SAVE.save(); redrawTown();
     }));
   }
+  // ── 스킬 나무(11-01 사용자 «스킬도 레벨이나 스킬 트리» → 시안 A): 직업마다 세 갈래(자동·손·필살) × 네 칸 · 직업 레벨마다 점수 1
+  //   바로 위 칸을 다 찍어야 아래 칸이 열림 · 다시 찍기 무료(두 번 눌러 확인) · 칸 = data TREES · 효과 = game.js tv()
+  const jobOf = cls => D.jobLevel((P().job || {})[cls] || 0);
+  const treeGot = cls => { const t = P().tree || (P().tree = {}); return t[cls] || (t[cls] = {}); };
+  const treeSpent = cls => Object.entries(D.TREES[cls] || {}).reduce((s, [sk, ns]) => s + ns.reduce((a, n) => a + Math.min(n.max, treeGot(cls)[sk + '.' + n.k] || 0), 0), 0);
+  const treeLeft = cls => jobOf(cls).lv - treeSpent(cls);
+  function townTree(el) {
+    const pf = P();
+    if (!clsOK(pf.cls) || !pf.unlocked.classes.includes(pf.cls)) pf.cls = 'swordsman';
+    const cls = pf.cls, C = D.CLASSES[cls], T = D.TREES[cls], got = treeGot(cls), J = jobOf(cls), left = J.lv - treeSpent(cls);
+    const clsRow = Object.keys(D.CLASSES).filter(k => pf.unlocked.classes.includes(k) && clsOK(k))
+      .map(k => { const l = treeLeft(k); return `<button data-c="${k}" class="${k === cls ? 'on' : ''}">${D.CLASSES[k].name} <small>Lv ${jobOf(k).lv}${l > 0 ? ' ⭐' + l : ''}</small></button>`; }).join('');
+    const br = [[C.skills.find(k => k !== C.manual), '자동'], [C.manual, '손'], [C.ult, '필살']].map(([sk, kind]) => {
+      const S = D.SKILLS[sk] || D.ULTS[sk], ns = T[sk];
+      return `<div class="br"><h4>${S.icon} ${S.name} <small>${kind}</small></h4>${ns.map((n, i) => {
+        const id = sk + '.' + n.k, r = Math.min(n.max, got[id] || 0), open = !i || (got[sk + '.' + ns[i - 1].k] || 0) >= ns[i - 1].max;
+        const st = r >= n.max ? 'full' : r ? 'part' : !open ? 'lock' : left > 0 ? 'open' : '';
+        return `<button class="nd ${st}${n.k === 'star' ? ' cap' : ''}" data-n="${id}"><b>${n.name}</b><i>${r}/${n.max}</i><span>${n.txt}${r && n.now ? ` <em>지금 ${n.now(r * n.v)}</em>` : ''}</span></button>`;
+      }).join('')}</div>`;
+    }).join('');
+    const bar = J.need ? `<i style="width:${(100 * J.xp / J.need).toFixed(1)}%"></i><span>다음 Lv 까지 ${J.xp.toLocaleString()} / ${J.need.toLocaleString()}</span>`
+      : '<i style="width:100%"></i><span>최고 레벨 — 나무를 다 찍을 수 있음</span>';
+    el.innerHTML = `<div class="trh"><b>${C.basicIcon} ${C.name} 스킬 나무</b><div id="tcls">${clsRow}</div></div>
+      <div class="trb"><div class="prog trx">${bar}</div><span><span class="dim">직업 Lv ${J.lv}${J.lv >= D.JOB.max ? '(최고)' : ''} ·</span> <span class="trp">남은 점수 ⭐ ${left}</span></span></div>
+      <div class="tree">${br}</div>
+      <div class="trf"><button id="trr">↺ 다시 찍기 (무료)</button><span>직업 레벨마다 점수 1 · 위 칸을 다 찍으면 아래 칸이 열림 · ★ = 스킬 모양이 바뀌는 큰 기술 · 직업 경험치 = 판에서 얻은 경험치(쓰러져도 · 무한 던전 ${D.JOB.endless}배)</span></div>`;
+    el.querySelectorAll('#tcls button').forEach(b => b.onclick = () => { click(); pf.cls = b.dataset.c; SAVE.save(); redrawTown(); });
+    el.querySelectorAll('.nd').forEach(b => b.onclick = () => {
+      const id = b.dataset.n, [sk, k] = id.split('.'), ns = T[sk], i = ns.findIndex(n => n.k === k), n = ns[i], r = got[id] || 0;
+      if (r >= n.max) return;
+      if (i && (got[sk + '.' + ns[i - 1].k] || 0) < ns[i - 1].max) { toast('위 칸을 먼저 다 찍어야 열려요'); return; }
+      if (treeLeft(cls) <= 0) { toast('남은 점수가 없어요 — 판을 돌면 직업 레벨이 올라요'); return; }
+      got[id] = r + 1; SAVE.save(); SFX.play(n.k === 'star' ? 'legend' : 'levelup'); redrawTown();
+    });
+    let armed = false;
+    el.querySelector('#trr').onclick = e => {
+      if (!treeSpent(cls)) return;
+      if (!armed) { armed = true; e.target.textContent = '정말 다시 찍을까요? 한 번 더'; return; }
+      click(); pf.tree[cls] = {}; SAVE.save(); toast('점수를 모두 돌려받았어요'); redrawTown();
+    };
+  }
   function townBless(el) {
     const pf = P();
     // 효과 글(10-23): «이름 지금 → 다음» · 받는 피해·재사용 대기는 «−» · 1.5% 같은 몫은 소수 한 자리까지
@@ -407,7 +448,7 @@
       <div class="lbl">조작 — 자동: 터치는 왼쪽 반 조이스틱 · 마우스는 누른 곳으로</div>
       <div class="row" id="pct">${CTRL.map(([k, t]) => `<button data-c="${k}" class="${pf.ctrl === k ? 'on' : ''}">${t}</button>`).join('')}</div>
       <div class="lbl">화면</div><div class="row"><button id="z0" class="${!pf.zoom ? 'on' : ''}">기본</button><button id="z1" class="${pf.zoom === 1 ? 'on' : ''}">크게</button><button id="z2" class="${pf.zoom === 2 ? 'on' : ''}">더 크게</button><button id="fs">전체 화면</button></div>
-      <div class="lbl">시험용</div><div class="row"><button id="all">모두 열기(직업·던전·능력 + 금화 1만)</button><button id="wipe">기록 지우기</button></div>
+      <div class="lbl">시험용</div><div class="row"><button id="all">모두 열기(직업·던전·능력·스킬 점수 + 금화 1만)</button><button id="wipe">기록 지우기</button></div>
       <p class="dim">기록은 이 브라우저에만 저장됩니다(홈 화면 앱도 같은 곳).</p>`;
     el.querySelector('#snd').onclick = () => { pf.sound = !pf.sound; SFX.on = pf.sound; SAVE.save(); click(); redrawTown(); };
     bindMusic(el);
@@ -416,7 +457,10 @@
     el.querySelector('#fs').onclick = () => fullscreen();
     el.querySelector('#all').onclick = () => {
       pf.unlocked.classes = Object.keys(D.CLASSES); pf.unlocked.dungeons = D.DUNGEONS.map(d => d.key).concat(D.ENDLESS.key);
-      pf.unlocked.abil = Object.keys(D.ABILITIES); pf.gold += 10000; SAVE.save(); SFX.play('chest'); showTown('opt'); toast('모두 열렸습니다');
+      pf.unlocked.abil = Object.keys(D.ABILITIES); pf.gold += 10000;
+      let jx = 0; for (let l = 0; l < D.JOB.max; l++) jx += D.JOB.need(l);   // 스킬 나무 점수 다(직업 최고 레벨)
+      for (const c of Object.keys(D.CLASSES)) pf.job[c] = Math.max(pf.job[c] || 0, jx);
+      SAVE.save(); SFX.play('chest'); showTown('opt'); toast('모두 열렸습니다');
     };
     let armed = false;
     el.querySelector('#wipe').onclick = e => {
@@ -531,7 +575,7 @@
     const ps = Object.entries(G.pass).map(([k, v]) => `<span>${D.PASSIVES[k].icon} ${D.PASSIVES[k].name} ${v.lv}</span>`);
     const C = G.C, sk = [[C.basic, 'basic'], ...C.skills.map((k, i) => [D.SKILLS[k].name, 's' + i]), [D.ULTS[C.ult].name, 'ult']]
       .map(([n, k]) => `<span>${n} ${G.skLv[k]}</span>`);
-    return `<div class="build">${sk.join('')}${G.might ? `<span>♾ 끝없는 힘 ${G.might}</span>` : ''}</div>
+    return `<div class="build">${sk.join('')}${G.might ? `<span>♾ 끝없는 힘 ${G.might}</span>` : ''}${G.tree && G.tree._spent ? `<span>⭐ 스킬 나무 ${G.tree._spent}점</span>` : ''}</div>
       <div class="build"><span class="dim">공격 스킬 ${G.abil.length}/${D.MAX_ABIL}</span>${ab.join('')}</div>
       <div class="build"><span class="dim">패시브 ${ps.length}/${D.MAX_PASS}</span>${ps.join('')}</div>`;
   }
@@ -600,6 +644,13 @@
     const r = b.rec, o = b.old, was = o ? ` <small>(${b.isNew ? '전 기록' : '최고'} ${fmtTime(o.t)} · 위협 ${o.stage}단계)</small>` : '';
     return `<div class="rec ${b.isNew ? 'new' : ''}">${b.isNew ? '🏅 새 최고 기록!' : '♾ 이번 기록'} <b>${fmtTime(r.t)}</b> · 위협 <b>${r.stage}</b>단계 · 보스 <b>${r.bosses}</b>${was}</div>`;
   }
+  // 직업 경험치(11-01 스킬 나무): 이번 판 몫 · 레벨이 오르면 «점수 +N»
+  function jobHtml(res) {
+    const j = res.job;
+    if (!j || !j.gain) return '';
+    const n = j.lv1 - j.lv0;
+    return `<div class="jobl">${D.CLASSES[j.cls].name} 직업 경험치 +${j.gain.toLocaleString()}${n ? ` · <b>Lv ${j.lv0} → ${j.lv1}</b> <em>⭐ 점수 +${n} — 스킬 탭</em>` : ` · Lv ${j.lv1}`}</div>`;
+  }
   function resultHtml(res) {
     const ach = res.ach.map(a => `<div class="lt" style="color:#ffcf5a">🏆 ${esc(a.name)} 달성!</div>`).join('')
       + (res.ach.endless ? '<div class="lt" style="color:#c8a8ff">♾ 무한 던전이 열렸습니다 — 출정 탭에서</div>' : '');
@@ -621,14 +672,14 @@
       const res = HNS.finish();
       if (!res) return;
       open(`<h2>${quit ? '원정 포기' : '쓰러졌다…'}</h2>${statsHtml(G)}${buildHtml(G)}
-        ${recordHtml(res)}<p>${G.dun.endless ? '무한 던전은 쓰러져도 금화를 모두 받음' : '쓰러지면 금화는 절반'} · 주운 장비는 그대로 창고로</p>${keptHtml(G)}${resultHtml(res)}
+        ${recordHtml(res)}${jobHtml(res)}<p>${G.dun.endless ? '무한 던전은 쓰러져도 금화를 모두 받음' : '쓰러지면 금화는 절반'} · 주운 장비는 그대로 창고로</p>${keptHtml(G)}${resultHtml(res)}
         <div class="row"><button id="ot">마을로</button><button class="main" id="or">다시 출정</button></div>`, endButtons);
     }, quit ? 0 : 900);
   }
   function showClear(G) {
     const res = HNS.finish();
     if (!res) return;
-    open(`<h2>🏆 ${G.dun.name} 정복!</h2>${statsHtml(G)}${keptHtml(G)}${resultHtml(res)}
+    open(`<h2>🏆 ${G.dun.name} 정복!</h2>${statsHtml(G)}${jobHtml(res)}${keptHtml(G)}${resultHtml(res)}
       <div class="row"><button id="ot">마을로</button><button class="main" id="or">다시 출정</button></div>`, endButtons);
   }
 

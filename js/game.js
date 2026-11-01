@@ -192,6 +192,13 @@ const HNS = (() => {
     }
     return { s, uniq };
   }
+  // 스킬 나무(11-01 · data TREES): 찍은 칸 → { '스킬.열쇠': 단계 × 값 } · 판 시작 때 한 번 · _spent = 찍은 점수
+  function treeVals(cls) {
+    const out = { _spent: 0 }, got = (SAVE.P.tree || {})[cls] || {}, T = D.TREES[cls] || {};
+    for (const sk in T) for (const n of T[sk]) { const r = Math.min(n.max, got[sk + '.' + n.k] || 0); if (r) { out[sk + '.' + n.k] = r * n.v; out._spent += r; } }
+    return out;
+  }
+  const tv = (sk, k) => (G.tree && G.tree[sk + '.' + k]) || 0;
   function recalc() {
     const st = Object.assign(STAT0(), G.base);
     for (const k in G.pass) st[D.PASSIVES[k].stat] += G.pass[k].v;
@@ -223,9 +230,10 @@ const HNS = (() => {
       skLv: { basic: 1, s0: 1, s1: 1, ult: 1 }, skBonus: { basic: 0, s0: 0, s1: 0, ult: 0 },
       abil: [], evo: {}, pass: {}, basicHits: 0,
       enemies: [], eproj: [], pproj: [], tele: [], sched: [], gems: [], coins: [], drops: [], ghosts: [], fx: [], nums: [], parts: [],
-      bag: [], spawnT: 0.5, eliteT: 60, waves: {}, midDone: false, bossDone: false, boss: null, cleared: false, buff: { fury: 0, swift: 0 },
+      bag: [], spawnT: 0.5, eliteT: 60, waves: {}, midDone: false, bossDone: false, boss: null, cleared: false, buff: { fury: 0, swift: 0, wind: 0 },
       // 무한 던전(11-01): look = 지금 바닥·곡(다른 던전은 그 던전 · 무한 던전은 흐름마다 바뀜) · stage = 위협 단계 · phase = 흐름 번호 · might = 끝없는 힘 장수
       look: dun.endless ? dun.phases[0].look : dun.key, stage: 1, phase: 0, bossT: 0, lastBossDeath: -99, lastBossKey: null, might: 0,
+      tree: treeVals(clsKey), xpAll: 0, windV: 0,         // 스킬 나무(11-01) · xpAll = 이 판에서 얻은 경험치(직업 경험치) · windV = 바람 타기 이동 몫
       ammo: D.GUN.mag, reloadT: 0, barrage: null, blizzard: null,
       levelQueue: 0, paused: false, over: false, god: false, uid: 1, hitStop: 0, shake: 0, potsBroken: new Set(),
       run: { elites: 0, chests: 0, legends: 0, evos: 0, dodges: 0, ultKillsMax: 0, goblins: 0, secrets: 0, pots: 0, kills: {}, bosses: {} },
@@ -544,6 +552,9 @@ const HNS = (() => {
     G.pproj.push(Object.assign({ k: 'arrow', x: p.x + Math.cos(ang) * 6, y: p.y - 12 + Math.sin(ang) * 6, vx: Math.cos(ang) * D.BOW.speed, vy: Math.sin(ang) * D.BOW.speed,
                                  life: D.BOW.life, dmg, pierce: pierce + Math.round(G.st.pierce), kind, hit: new Set(), r: 4 }, o || {}));
   }
+  function arrowBack(b) {                             // 되돌이 화살(스킬 나무 ★): 간 만큼 되돌아오며 한 번 더 벰(맞은 적 다시 맞음)
+    b.back = true; b.vx = -b.vx; b.vy = -b.vy; b.hit.clear(); b.pierce = Math.max(b.pierce, 2); b.life = Math.max(0.15, (b.life0 || D.BOW.life) - b.life);
+  }
   function shootBullet(ang, dmg, pierce, kind, o) {
     const p = G.p, g = D.GUN;
     G.pproj.push(Object.assign({ k: 'bullet', x: p.x + Math.cos(ang) * 8, y: p.y - 13 + Math.sin(ang) * 8, vx: Math.cos(ang) * g.speed, vy: Math.sin(ang) * g.speed,
@@ -632,12 +643,12 @@ const HNS = (() => {
          } },
   };
   function skillDef(i) { return D.SKILLS[G.C.skills[i]]; }
-  function skillCd(i) { const sk = skillDef(i), lv = G.skLv['s' + i]; return sk.cd * (lv >= 4 ? 0.8 : 1) * cdMul(); }
+  function skillCd(i) { const sk = skillDef(i), lv = G.skLv['s' + i]; return sk.cd * (lv >= 4 ? 0.8 : 1) * cdMul() * (1 - tv(G.C.skills[i], 'cd')); }
   function useSkill(i, auto) {                        // auto = 자동 발동(돌진은 움직이는 쪽이 아니라 가까운 적 쪽으로)
     const p = G && G.p;
     if (busy() || !G.C.skills[i] || G.cds[i] > 0 || p.dash) return false;   // 스킬이 하나뿐인 직업(검사)은 두 번째 칸이 없음
     const sk = skillDef(i), lv = G.skLv['s' + i], key = G.C.skills[i];
-    const mul = sk.mul * (lv >= 2 ? 1.3 : 1) * (1 + G.skBonus['s' + i]);
+    const mul = sk.mul * (lv >= 2 ? 1.3 : 1) * (1 + G.skBonus['s' + i]) * (1 + tv(key, 'dmg'));   // tv = 스킬 나무(11-01)
     G.cdMax[i] = G.cds[i] = skillCd(i);
     if (G.uniq.has('twinspin')) G.ultCd = Math.max(0, G.ultCd - 2);       // 질풍(전설)
     const tg = nearestEnemy(170);
@@ -659,7 +670,7 @@ const HNS = (() => {
       burst(p.x, p.y, 8, ['#e8fbff', '#9ae6ff'], { spd: [20, 60], up: [6, 20], life: [0.2, 0.4] });
       sfx('dash');
     } else if (key === 'rift') {                      // 검사 자동(10-22 «자동 스킬이 전부 돌진» → 제자리 기술): 내려찍으면 적이 몰린 쪽으로 땅이 갈라지며 바위가 차례로 솟음
-      const len = sk.len * (lv >= 3 ? 1.25 : 1), r = sk.r * (1 + G.st.area), lines = lv >= 5 ? 3 : 1, n = Math.round(len / 20);
+      const len = sk.len * (lv >= 3 ? 1.25 : 1) * (1 + tv(key, 'len')), r = sk.r * (1 + G.st.area) * (1 + tv(key, 'area')), lines = lv >= 5 ? 3 : 1, n = Math.round(len / 20);
       const t2 = densest(len) || tg, a0 = t2 ? Math.atan2(t2.y - p.y, t2.x - p.x) : ang;
       p.dir = dirOf(Math.cos(a0), Math.sin(a0));
       const look = RIFT_LOOK[sk.look] || RIFT_LOOK.A;
@@ -669,18 +680,21 @@ const HNS = (() => {
         const fx0 = x0 + Math.cos(a0) * 12, fy0 = y0 + Math.sin(a0) * 12;   // 칼끝이 땅에 닿는 자리
         look.slam(fx0, fy0);
         G.shake = Math.max(G.shake, 0.1); sfx('slam');
+        const hit2 = new Set(), quake = tv(key, 'star');  // ★ 여진(스킬 나무): 0.5초 뒤 같은 금을 따라 한 번 더(피해 60% · 따로 맞음)
         for (let l = 0; l < lines; l++) {
           const aa = a0 + (l - (lines - 1) / 2) * 0.45, ca = Math.cos(aa), sa = Math.sin(aa);
-          G.fx.push({ k: 'crack', x: x0, y: y0, ca, sa, len, open: n * 0.04, t: 0, dur: n * 0.04 + 0.6, c1: look.c1, c2: look.c2, w: look.cw,
-                      jit: Array.from({ length: Math.ceil(len / 7) + 2 }, () => rand(-2.5, 2.5)) });
-          for (let i = 1; i <= n; i++) after(i * 0.04, () => {
-            const d = 8 + (len - 8) * i / n, x = x0 + ca * d, y = y0 + sa * d, big = i === n, rr = r * (big ? 1.4 : 1);
+          const crack = dur => G.fx.push({ k: 'crack', x: x0, y: y0, ca, sa, len, open: n * 0.04, t: 0, dur, c1: look.c1, c2: look.c2, w: look.cw,
+                                           jit: Array.from({ length: Math.ceil(len / 7) + 2 }, () => rand(-2.5, 2.5)) });
+          crack(n * 0.04 + 0.6);
+          if (quake) after(n * 0.04 + 0.45, () => crack(n * 0.03 + 0.55));
+          for (let w = 0; w < (quake ? 2 : 1); w++) for (let i = 1; i <= n; i++) after((w ? n * 0.04 + 0.5 : 0) + i * (w ? 0.03 : 0.04), () => {
+            const d = 8 + (len - 8) * i / n, x = x0 + ca * d, y = y0 + sa * d, big = i === n, rr = r * (big ? 1.4 : 1), hs = w ? hit2 : hit;
             look.pop(x, y, big, rr);
             near(x, y, rr + 24, e => {
-              if (hit.has(e.id) || Math.hypot(e.x - x, (e.y - y) / SQ) > rr + e.r) return;
-              hit.add(e.id);
+              if (hs.has(e.id) || Math.hypot(e.x - x, (e.y - y) / SQ) > rr + e.r) return;
+              hs.add(e.id);
               const dx = e.x - x, dy = e.y - y, dl = Math.hypot(dx, dy) || 1;
-              if (hurtEnemy(e, dmgBase() * mul, dx / dl * sk.kb, dy / dl * sk.kb, 'skill')) hits++;
+              if (hurtEnemy(e, dmgBase() * mul * (w ? 0.6 : 1), dx / dl * sk.kb, dy / dl * sk.kb, 'skill')) hits++;
               // 솟은 바위에 걸려 비틀 — 하던 공격 예고가 끊김(보스 빼고) · 봇(10-22): 몸이 안 움직이는 대신 이걸로 버팀(돌진의 무적·빠져나감 몫)
               if (sk.stagger && !e.boss && e.hp > 0 && e.st === 'wind') { e.st = 'rec'; e.stT = 0; e.at = sk.stagger; }
             });
@@ -690,9 +704,10 @@ const HNS = (() => {
         }
       }, a0);
     } else if (key === 'volley') {
-      const n = sk.n + (lv >= 3 ? 3 : 0), pierce = 1 + (lv >= 5 ? 2 : 0);
+      const n = sk.n + (lv >= 3 ? 3 : 0) + tv(key, 'n'), pierce = 1 + (lv >= 5 ? 2 : 0) + tv(key, 'pierce');
+      const ret = tv(key, 'star') ? { ret: D.BOW.life * 0.5, life0: D.BOW.life } : null;   // ★ 되돌이 화살: 반쯤 가서(또는 관통이 다하면) 돌아옴
       playAct(sk.act, sk.fd, 1, a => {
-        for (let k = 0; k < n; k++) shootArrow(a.ang + (k - (n - 1) / 2) * (sk.spread * Math.PI / 180) / (n - 1), dmgBase() * mul, pierce, 'skill');
+        for (let k = 0; k < n; k++) shootArrow(a.ang + (k - (n - 1) / 2) * (sk.spread * Math.PI / 180) / (n - 1), dmgBase() * mul, pierce, 'skill', ret && Object.assign({}, ret));
         const q = G.p;                                // 시위를 놓는 자리 불꽃 + 부채꼴 바람
         burst(q.x + Math.cos(a.ang) * 8, q.y + Math.sin(a.ang) * 6, 10, ['#ffe6a0', '#ffffff', '#9ae6ff'], { spd: [40, 100], up: [10, 30], life: [0.2, 0.4], z: 10 });
         G.fx.push({ k: 'bigslash', x: q.x, y: q.y - 10, r: 34, ang: sqAng(a.ang, SQ), arc: sk.spread + 20, t: 0, dur: 0.22 });
@@ -701,54 +716,72 @@ const HNS = (() => {
     } else if (key === 'thrust') {                    // 검사(10-22 회피 자리 · 사용자 «찌르기로»): 움직이는 쪽(서 있으면 가까운 적 쪽)으로 찌르며 내달림 · 무적 · 지나간 적을 꿰뚫음
       const a2 = p.moving ? Math.atan2(p.vy, p.vx) : ang;
       p.dir = dirOf(Math.cos(a2), Math.sin(a2));
-      const dist = sk.dist * (lv >= 3 ? 1.25 : 1);
-      p.dash = { t: 0, dur: sk.dur, ux: Math.cos(a2), uy: Math.sin(a2), spd: dist / sk.dur, hit: new Set(), sk, mul, boom: lv >= 5, boomR: 40 * (1 + G.st.area), x0: p.x, y0: p.y };
+      const dist = sk.dist * (lv >= 3 ? 1.25 : 1) * (1 + tv(key, 'dist'));
+      const waves = tv(key, 'star') ? () => { for (const da of [-0.3, 0, 0.3]) { fireWave(a2 + da, dmgBase() * mul * 0.8, 1.2, false); G.pproj[G.pproj.length - 1].kind = 'skill'; } sfx('swing'); } : null;   // ★ 검기 세 갈래
+      p.dash = { t: 0, dur: sk.dur, ux: Math.cos(a2), uy: Math.sin(a2), spd: dist / sk.dur, hit: new Set(), sk, mul, boom: lv >= 5, boomR: 40 * (1 + G.st.area), x0: p.x, y0: p.y, onEnd: waves };
       p.inv = Math.max(p.inv, sk.dur + 0.15);
       playAct(sk.act, sk.fd, 99, null, a2);
       burst(p.x, p.y, 6, ['#e8fbff', '#9ae6ff'], { spd: [20, 50], up: [6, 16], life: [0.2, 0.35] });
       sfx('dash');
     } else if (key === 'leap') {                      // 궁수(회피 자리): 움직이는 쪽(서 있으면 적 반대쪽)으로 뛰며 가까운 적에게 쏨
       const back = p.moving ? Math.atan2(p.vy, p.vx) : ang + Math.PI, dist = sk.dist;
-      p.dash = { t: 0, dur: sk.dur, ux: Math.cos(back), uy: Math.sin(back), spd: dist / sk.dur, dodge: true, back: !p.moving };
+      const wind = tv(key, 'wind'), ring = tv(key, 'star');   // 바람 타기(뛴 뒤 2초 이동 +) · ★ 화살 고리(내려앉으면 둘레로 12발)
+      p.dash = { t: 0, dur: sk.dur, ux: Math.cos(back), uy: Math.sin(back), spd: dist / sk.dur, dodge: true, back: !p.moving,
+                 onEnd: wind || ring ? () => {
+                   if (wind) { G.buff.wind = 2; G.windV = wind; }
+                   if (ring) { for (let k = 0; k < 12; k++) shootArrow(k * Math.PI / 6, dmgBase() * mul * 0.6, 1, 'skill'); shockAt(G.p.x, G.p.y, 46, '#9ae6ff', 0.3); sfx('shot'); }
+                 } : null };
       p.inv = Math.max(p.inv, sk.dur + 0.15);
-      const n = sk.n + (lv >= 3 ? 3 : 0), x0 = p.x, y0 = p.y;
+      const n = sk.n + (lv >= 3 ? 3 : 0) + tv(key, 'n'), x0 = p.x, y0 = p.y;
       playAct(sk.act, sk.fd, 1, a => { for (let k = 0; k < n; k++) shootArrow(ang + (k - (n - 1) / 2) * 0.16, dmgBase() * mul, 2, 'skill'); sfx('shot'); }, ang);
       if (lv >= 5) teleCircle(x0, y0, 40, 0.35, () => { G.fx.push({ k: 'boom', x: x0, y: y0 - 6, r: 40, t: 0, dur: 0.35 }); near(x0, y0, 50, e => { if (Math.hypot(e.x - x0, e.y - y0) < 40 + e.r) hurtEnemy(e, dmgBase() * mul * 1.5, 0, 0, 'skill'); }); sfx('slam'); });
     } else if (key === 'roll') {                      // 권총수: 구르고(무적) 끝에서 사방으로 난사
       let ux, uy;
       if (p.moving) { ux = p.vx; uy = p.vy; } else { ux = -Math.cos(ang); uy = -Math.sin(ang); }
-      const l = Math.hypot(ux, uy) || 1, n = sk.n + (lv >= 3 ? 5 : 0), x0 = p.x, y0 = p.y;
+      const l = Math.hypot(ux, uy) || 1, n = sk.n + (lv >= 3 ? 5 : 0) + tv(key, 'n'), x0 = p.x, y0 = p.y, spiral = tv(key, 'star');   // ★ 총알 회오리 = 세 바퀴
+      const ringOf = off => { for (let k = 0; k < n; k++) shootBullet(k * Math.PI * 2 / n + off, dmgBase() * mul, 1, 'skill'); sfx('gun'); };
       p.dash = { t: 0, dur: sk.dur, ux: ux / l, uy: uy / l, spd: sk.dist / sk.dur, dodge: true, back: false,
-                 onEnd: () => { for (let k = 0; k < n; k++) shootBullet(k * Math.PI * 2 / n + rand(0, 0.3), dmgBase() * mul, 1, 'skill'); sfx('gun'); } };
+                 onEnd: () => { const o = rand(0, 0.3); ringOf(o); if (spiral) { after(0.12, () => ringOf(o + 0.35)); after(0.24, () => ringOf(o + 0.7)); } } };
       p.dir = dirOf(ux, uy);
       p.inv = Math.max(p.inv, sk.dur + 0.15);
       if (lv >= 5) after(0.3, () => { blastAt(x0, y0, 44 * (1 + G.st.area), dmgBase() * mul * 2.5, 'skill', '#ffb070'); sfx('slam'); });
       sfx('dash');
     } else if (key === 'grenade') {                   // 권총수: 가장 가까운 적 쪽으로 던짐 → 잠깐 뒤 폭발
-      const n = lv >= 5 ? 3 : 1, r = sk.r * (lv >= 3 ? 1.2 : 1) * (1 + G.st.area);
+      const n = lv >= 5 ? 3 : 1, r = sk.r * (lv >= 3 ? 1.2 : 1) * (1 + G.st.area) * (1 + tv(key, 'area')), cluster = tv(key, 'star');   // ★ 집속탄
       const tx0 = tg ? tg.x : p.x + Math.cos(ang) * 80, ty0 = tg ? tg.y : p.y + Math.sin(ang) * 80;
       const d0 = Math.min(sk.range, Math.hypot(tx0 - p.x, ty0 - p.y)), a0 = Math.atan2(ty0 - p.y, tx0 - p.x);
       playAct(sk.act, sk.fd, 1, () => {
         for (let k = 0; k < n; k++) {
           const aa = a0 + (k - (n - 1) / 2) * 0.45, tx = G.p.x + Math.cos(aa) * d0, ty = G.p.y + Math.sin(aa) * d0;
           G.fx.push({ k: 'lob', x: G.p.x, y: G.p.y - 14, x2: tx, y2: ty, t: 0, dur: sk.fuse });
-          after(sk.fuse, () => { blastAt(tx, ty, r, dmgBase() * mul, 'skill', '#ffb070'); G.shake = Math.max(G.shake, 0.2); sfx('slam'); });
+          after(sk.fuse, () => {
+            blastAt(tx, ty, r, dmgBase() * mul, 'skill', '#ffb070'); G.shake = Math.max(G.shake, 0.2); sfx('slam');
+            if (cluster) for (let j = 0; j < 4; j++) {     // 작은 폭탄 넷이 둘레로 튀어 한 번 더
+              const ja = j * Math.PI / 2 + rand(0, 1.2), jx = tx + Math.cos(ja) * r * 0.8, jy = ty + Math.sin(ja) * r * 0.8 * SQ;
+              G.fx.push({ k: 'lob', x: tx, y: ty - 6, x2: jx, y2: jy, t: 0, dur: 0.25 });
+              after(0.25, () => { blastAt(jx, jy, r * 0.5, dmgBase() * mul * 0.4, 'skill', '#ffd070'); sfx('hit'); });
+            }
+          });
         }
       }, ang);
     } else if (key === 'meteor') {                    // 마법사: 가장 많이 모인 곳에 표시 → 불덩이가 떨어짐
-      const r = sk.r * (lv >= 3 ? 1.2 : 1) * (1 + G.st.area);
+      const r = sk.r * (lv >= 3 ? 1.2 : 1) * (1 + G.st.area) * (1 + tv(key, 'area')), k3 = tv(key, 'star') ? 0.7 : 1;   // ★ 유성우 = 셋(하나 70%)
       const t2 = densest(sk.range) || (tg ? { x: tg.x, y: tg.y } : { x: p.x + Math.cos(ang) * 70, y: p.y + Math.sin(ang) * 70 });
-      playAct(sk.act, sk.fd, 1, () => {
-        G.fx.push({ k: 'mark', x: t2.x, y: t2.y, r, t: 0, dur: sk.delay });
-        G.fx.push({ k: 'meteor', x: t2.x, y: t2.y, t: 0, dur: sk.delay });
-        after(sk.delay, () => {
-          blastAt(t2.x, t2.y, r, dmgBase() * mul, 'skill', '#ff8a3a');
+      const drop = (x, y, delay) => {
+        G.fx.push({ k: 'mark', x, y, r, t: 0, dur: delay });
+        G.fx.push({ k: 'meteor', x, y, t: 0, dur: delay });
+        after(delay, () => {
+          blastAt(x, y, r, dmgBase() * mul * k3, 'skill', '#ff8a3a');
           G.shake = Math.max(G.shake, 0.3); sfx('slam');
           if (lv >= 5) {                              // 불바다: 3초 동안 지글지글
-            G.fx.push({ k: 'fire', x: t2.x, y: t2.y, r: r * 0.8, t: 0, dur: 3 });
-            for (let tt = 0.3; tt < 3; tt += 0.3) after(tt, () => near(t2.x, t2.y, r, e => { if (Math.hypot(e.x - t2.x, (e.y - t2.y) / SQ) < r * 0.8 + e.r) hurtEnemy(e, dmgBase() * mul * 0.08, 0, 0, 'skill'); }));
+            G.fx.push({ k: 'fire', x, y, r: r * 0.8, t: 0, dur: 3 });
+            for (let tt = 0.3; tt < 3; tt += 0.3) after(tt, () => near(x, y, r, e => { if (Math.hypot(e.x - x, (e.y - y) / SQ) < r * 0.8 + e.r) hurtEnemy(e, dmgBase() * mul * k3 * 0.08, 0, 0, 'skill'); }));
           }
         });
+      };
+      playAct(sk.act, sk.fd, 1, () => {
+        drop(t2.x, t2.y, sk.delay);
+        if (k3 < 1) { const a1 = rand(0, Math.PI * 2); for (let j = 1; j <= 2; j++) { const aa = a1 + j * 2.4; drop(t2.x + Math.cos(aa) * r * 0.9, t2.y + Math.sin(aa) * r * 0.9 * SQ, sk.delay + j * 0.25); } }
       }, ang);
     } else if (key === 'blink') {                     // 마법사: 움직이는 쪽(서 있으면 적 반대쪽)으로 순간 이동 · 떠난 자리에 서리
       const jump = () => {
@@ -756,13 +789,17 @@ const HNS = (() => {
         let ux, uy;
         if (q.moving) { ux = q.vx; uy = q.vy; } else { const t3 = nearestEnemy(120); if (t3) { ux = q.x - t3.x; uy = q.y - t3.y; } else [ux, uy] = dirVec(q.dir); }
         const l = Math.hypot(ux, uy) || 1, x0 = q.x, y0 = q.y;
-        let dd = sk.dist * (lv >= 3 ? 1.3 : 1);
+        let dd = sk.dist * (lv >= 3 ? 1.3 : 1) * (1 + tv(key, 'dist'));
         while (dd > 10 && pillarAt(q.x + ux / l * dd, q.y + uy / l * dd)) dd -= 10;
         G.fx.push({ k: 'sparkle', x: x0, y: y0 - 14, t: 0, dur: 0.5, c: '#c89aff' });
         q.x += ux / l * dd; q.y += uy / l * dd; solve(q, 5);
         G.fx.push({ k: 'sparkle', x: q.x, y: q.y - 14, t: 0, dur: 0.5, c: '#c89aff' });
         q.inv = Math.max(q.inv, 0.35);
         novaAt(x0, y0, sk.r * (1 + G.st.area), dmgBase() * mul, 1.5, 0, 'skill');
+        if (tv(key, 'star')) {                        // ★ 얼음 분신: 떠난 자리 분신이 1초 뒤 크게 터지며 얼림
+          G.fx.push({ k: 'after', x: x0, y: y0, dir: q.dir, col: heroCol(), t: 0, dur: 1 });
+          after(1, () => { novaAt(x0, y0, sk.r * 1.4 * (1 + G.st.area), dmgBase() * mul * 2, 2, 1, 'skill'); shockAt(x0, y0, sk.r * 1.6, '#bfefff', 0.4); G.shake = Math.max(G.shake, 0.15); });
+        }
         sfx('dash');
       };
       playAct(sk.act, sk.fd, 0, null, ang);
@@ -783,7 +820,7 @@ const HNS = (() => {
     });
     return best;
   }
-  function ultCdOf() { return D.ULTS[G.C.ult].cd * (G.skLv.ult >= 4 ? 0.8 : 1) * cdMul() / (1 + G.st.ultc); }
+  function ultCdOf() { return D.ULTS[G.C.ult].cd * (G.skLv.ult >= 4 ? 0.8 : 1) * cdMul() * (1 - tv(G.C.ult, 'cd')) / (1 + G.st.ultc); }
   // ── 화살비 모습(10-31 사용자 «궁수 필살기 이펙트가 너무 밋밋» → 시안 A 강철·B 빛·C 유성 중 C «유성 화살비») — 그림만(피해는 useUlt)
   //   rzone = 바닥 금빛 룬 원 · rsky = 하늘 마법진 · rarrow = 떨어지는 금빛 화살(닿으면 rhit 빛 별 + 튐) · rup = 처음 하늘로 쏘아 올림 · rbig·rflare = 마지막 큰 유성 화살 한 방
   const RAIN_H = 92;                                   // 화살이 떨어지기 시작하는 높이(바닥에서 화면 위로)
@@ -793,8 +830,8 @@ const HNS = (() => {
     G.fx.push({ k: 'rsky', x: s.x, y: s.y - RAIN_H, r: r * 0.62, t: 0, dur: dur + 0.25 });
     shockAt(s.x, s.y, r, '#ffe6a0', 0.45);
   }
-  function rainTick(s, r) {                            // 한 번(0.12초)에 화살 5개: 하늘 마법진 안에서 나와 범위 안 아무 데나로
-    for (let i = 0; i < 5; i++) {
+  function rainTick(s, r, more) {                      // 한 번(0.12초)에 화살 5개(+ 장대비): 하늘 마법진 안에서 나와 범위 안 아무 데나로
+    for (let i = 0; i < 5 + (more || 0); i++) {
       const a = rand(0, Math.PI * 2), rr = r * Math.sqrt(Math.random()), tx = s.x + Math.cos(a) * rr, ty = s.y + Math.sin(a) * rr * SQ;
       const b = rand(0, Math.PI * 2), q = r * 0.62 * Math.sqrt(Math.random()), sx = s.x + Math.cos(b) * q, sy = s.y - RAIN_H + Math.sin(b) * q * 0.32;
       const fall = rand(0.16, 0.24);
@@ -819,7 +856,7 @@ const HNS = (() => {
     const p = G && G.p;
     if (busy() || G.ultCd > 0) return false;
     if (p.dash) { G.ultQ = 0.6; return true; }      // 찌르기·구르기 중이면 끝나자마자 나감(update)
-    const u = D.ULTS[G.C.ult], lv = G.skLv.ult, mul = u.mul * (lv >= 2 ? 1.35 : 1) * (1 + G.skBonus.ult), r = u.r * (lv >= 3 ? 1.2 : 1) * (1 + G.st.area);
+    const u = D.ULTS[G.C.ult], lv = G.skLv.ult, mul = u.mul * (lv >= 2 ? 1.35 : 1) * (1 + G.skBonus.ult) * (1 + tv(G.C.ult, 'dmg')), r = u.r * (lv >= 3 ? 1.2 : 1) * (1 + G.st.area) * (1 + tv(G.C.ult, 'area'));
     G.ultMax = G.ultCd = ultCdOf(); G.ultKillsNow = 0;
     p.inv = Math.max(p.inv, 0.7);
     sfx('ult');
@@ -830,35 +867,46 @@ const HNS = (() => {
         flashScreen('#e8fbff', 0.35); shockAt(G.p.x, G.p.y, r * 1.1, '#9ae6ff', 0.5); shockAt(G.p.x, G.p.y, r * 0.6, '#ffffff', 0.35);
         burst(G.p.x, G.p.y, 30, ['#ffffff', '#9ae6ff', '#bfe8ff', '#ffe6a0'], { spd: [r * 0.8, r * 2], up: [30, 90], life: [0.35, 0.7] });
       };
-      playAct(u.act, u.fd, 3, () => { blast(0); if (lv >= 5) { after(0.35, () => blast(1)); after(0.7, () => blast(2)); } finish(); }, facingAng());
+      const swords = () => {                          // ★ 검의 비(스킬 나무): 둘레에 빛의 검 여덟 자루가 차례로 꽂힘
+        const cx = G.p.x, cy = G.p.y, a1 = rand(0, Math.PI * 2), sr = 28 * (1 + G.st.area);
+        for (let j = 0; j < 8; j++) after(0.18 + j * 0.05, () => {
+          const aa = a1 + j * Math.PI / 4, x = cx + Math.cos(aa) * r * 0.7, y = cy + Math.sin(aa) * r * 0.7 * SQ;
+          G.fx.push({ k: 'lsword', x, y, s: 1.3, t: 0, dur: 0.6 });
+          after(0.06, () => { shockAt(x, y, sr, '#bfefff', 0.3); near(x, y, sr + 16, e => { if (Math.hypot(e.x - x, (e.y - y) / SQ) < sr + e.r) hurtEnemy(e, dmgBase() * mul * 0.4, 0, 0, 'ult'); }); sfx('hit'); });
+        });
+      };
+      playAct(u.act, u.fd, 3, () => { blast(0); if (lv >= 5) { after(0.35, () => blast(1)); after(0.7, () => blast(2)); } if (tv('storm', 'star')) swords(); finish(); }, facingAng());
     } else if (G.C.ult === 'barrage') {               // 총알 폭풍: 몇 초 동안 둘레 적을 노려 마구 쏨(움직일 수 있음) — 진행은 update 의 G.barrage
-      const dur = u.dur + (lv >= 3 ? 1 : 0);
-      G.barrage = { t: dur, acc: 0, n: 0, wave: 0.5, ang: facingAng(), two: lv >= 5, dmg: dmgBase() * mul, r };
+      const dur = u.dur + (lv >= 3 ? 1 : 0) + tv('barrage', 'dur');
+      G.barrage = { t: dur, acc: 0, n: 0, wave: 0.5, ang: facingAng(), two: lv >= 5, dmg: dmgBase() * mul, r, every: 6 - tv('barrage', 'boom'), carpet: tv('barrage', 'star') };
       playAct(u.act, u.fd, 0, null, facingAng());
       flashScreen('#ffe6a0', 0.25); shockAt(p.x, p.y, 70, '#ffb070');
       burst(p.x, p.y, 16, ['#fff2b0', '#ffb04a', '#ff7a2a'], { spd: [60, 140], up: [10, 40], life: [0.25, 0.45] });
       after(dur, finish);
     } else if (G.C.ult === 'blizzard') {              // 눈보라: 둘레에 몇 초 동안 얼음 폭풍(느려짐 · 5단계는 얼림)
-      G.blizzard = { t: u.dur, tick: 0, r, dmg: dmgBase() * mul, freeze: lv >= 5 };
+      const bd = u.dur + tv('blizzard', 'dur');      // 긴 겨울 · ★ 얼음 혜성(comet = 다음 덩이까지)
+      G.blizzard = { t: bd, tick: 0, r, dmg: dmgBase() * mul, freeze: lv >= 5, star: !!tv('blizzard', 'star'), comet: 0.6 };
       playAct(u.act, u.fd, 1, null, facingAng());
       G.shake = 0.2;
       flashScreen('#cfefff', 0.35); shockAt(p.x, p.y, r, '#bfefff', 0.5);
       burst(p.x, p.y, 26, ['#ffffff', '#bfefff', '#8fd8ff'], { spd: [r * 0.6, r * 1.6], up: [20, 60], g: 40, life: [0.5, 0.9] });
-      after(u.dur, finish);
+      after(bd, finish);
     } else {                                          // 화살비: 가장 많이 모인 곳(없으면 앞)에 쏟아짐
       const spots = [];
       const tg = nearestEnemy(220);
       spots.push(tg ? { x: tg.x, y: tg.y } : { x: p.x + Math.cos(facingAng()) * 60, y: p.y + Math.sin(facingAng()) * 60 });
       if (lv >= 5) { const t2 = G.enemies[Math.floor(Math.random() * G.enemies.length)]; if (t2) spots.push({ x: t2.x, y: t2.y }); }
+      const ch = 0.55 + tv('rain', 'chance'), more = Math.round(tv('rain', 'chance') * 10), fin = 1 + tv('rain', 'fin'), three = tv('rain', 'star');   // 스킬 나무: 장대비 · 유성 꼬리 · ★ 유성 셋
       rainUp(p);                                     // 10-31 유성 화살비 그림(위 rain*) — 판정은 아래 그대로 + 끝에 한 방
       playAct(u.act, u.fd, 1, () => {
         for (const s of spots) {
           rainStart(s, r, u.dur);
           for (let tt = 0; tt < u.dur; tt += u.tick) after(tt, () => {
-            near(s.x, s.y, r + 10, e => { if (Math.hypot(e.x - s.x, e.y - s.y) < r + e.r && Math.random() < 0.55) hurtEnemy(e, dmgBase() * mul, 0, 0, 'ult'); });
-            rainTick(s, r);
+            near(s.x, s.y, r + 10, e => { if (Math.hypot(e.x - s.x, e.y - s.y) < r + e.r && Math.random() < ch) hurtEnemy(e, dmgBase() * mul, 0, 0, 'ult'); });
+            rainTick(s, r, more);
           });
-          after(u.dur, () => rainFinale(s, r, dmgBase() * mul));
+          after(u.dur, () => rainFinale(s, r, dmgBase() * mul * fin));
+          if (three) for (const j of [1, 2]) after(u.dur + j * 0.35, () => rainFinale({ x: s.x + rand(-0.3, 0.3) * r, y: s.y + rand(-0.3, 0.3) * r * SQ }, r, dmgBase() * mul * fin));
         }
         flashScreen('#fff2c8', 0.2);
         G.shake = 0.25; finish();
@@ -1247,7 +1295,8 @@ const HNS = (() => {
   // 금화(10-28): 던전 배율(D.DUNGEONS gold) × 재물운 · 소수 몫은 모아 둠 — 예전엔 동전마다 반올림해 1~4닢 동전엔 재물운 8~16%가 통째로 사라졌음
   function addGold(v) { G.goldF = (G.goldF || 0) + v * (G.dun.gold || 1) * (1 + G.st.gold); G.gold = Math.floor(G.goldF + 1e-6); sfx('coin'); }
   function gainXp(v) {
-    G.xp += v * (1 + G.st.xp);
+    const gx = v * (1 + G.st.xp);
+    G.xp += gx; G.xpAll += gx;                       // xpAll = 직업 경험치(판 끝에 그 직업에)
     while (G.xp >= D.xpNeed(G.lv)) {
       G.xp -= D.xpNeed(G.lv); G.lv++;
       const p = G.p;
@@ -1788,7 +1837,7 @@ const HNS = (() => {
         if (d.onEnd) d.onEnd();
       }
     } else if (p.moving) {
-      const spd = G.C.speed * (1 + G.st.speed) * swiftMul() * (p.atk ? D.MOVE_WHILE_ATK : 1);
+      const spd = G.C.speed * (1 + G.st.speed) * swiftMul() * (p.atk ? D.MOVE_WHILE_ATK : 1) * (G.buff.wind > 0 ? 1 + G.windV : 1);   // 바람 타기(스킬 나무)
       p.x += mx * spd * dt; p.y += my * spd * dt;
       p.vx = mx; p.vy = my;
       p.walkT += dt * (0.6 + ml);
@@ -1855,7 +1904,7 @@ const HNS = (() => {
         b.acc--; b.n++; b.ang += 0.5;
         const tg = foes.length && b.n % 3 ? foes[Math.floor(Math.random() * foes.length)] : null;
         const a = tg ? Math.atan2(tg.y - tg.sh.wh[1] * 0.45 * tg.scale - (p.y - 13), tg.x - p.x) + rand(-0.06, 0.06) : b.ang;
-        shootBullet(a, b.dmg, 2, 'ult', { life: 0.55, big: true, boom: b.n % 6 === 0 });
+        shootBullet(a, b.dmg, 2, 'ult', { life: 0.55, big: true, boom: b.n % (b.every || 6) === 0 });   // every = 폭발탄 간격(스킬 나무 «폭발탄»)
         p.dir = dirOf(Math.cos(a), Math.sin(a));      // 쏘는 쪽으로 몸을 돌림(빙글빙글)
         burst(p.x + Math.cos(a) * 9, p.y - 12 + Math.sin(a) * 7, 2, ['#fff2b0', '#ffb04a'], { spd: [30, 70], up: [0, 10], life: [0.08, 0.16], z: 12 });   // 총구 불꽃
         if (b.n % 3 === 0) burst(p.x, p.y, 1, ['#ffd34a'], { spd: [20, 40], up: [40, 70], g: 320, life: [0.4, 0.6] });   // 튀는 탄피
@@ -1869,6 +1918,10 @@ const HNS = (() => {
       if (b.t <= 0) {                                 // 끝: 큰 폭발
         blastAt(p.x, p.y, b.r, b.dmg * 3, 'ult', '#ffb070');
         flashScreen('#fff0c8', 0.3); G.shake = Math.max(G.shake, 0.25); sfx('slam');
+        if (b.carpet) {                               // ★ 융단 폭격(스킬 나무): 둘레로 폭발 여덟이 차례로
+          const cx = p.x, cy = p.y;
+          for (let j = 0; j < 8; j++) after(0.08 * (j + 1), () => { const aa = j * Math.PI / 4, x = cx + Math.cos(aa) * b.r * 0.8, y = cy + Math.sin(aa) * b.r * 0.8 * SQ; blastAt(x, y, b.r * 0.45, b.dmg * 1.5, 'ult', '#ff8a3a'); sfx('slam'); });
+        }
         G.barrage = null;
       }
     }
@@ -1884,6 +1937,11 @@ const HNS = (() => {
           if (z.freeze && !e.boss) e.freeze = Math.max(e.freeze, 0.4);
         });
         sfx('frost');
+      }
+      if (z.star && (z.comet -= dt) <= 0) {           // ★ 얼음 혜성: 1초마다 가까운 적에게 얼음 덩이
+        z.comet = 1;
+        const tg = nearestEnemy(z.r * 1.8);
+        if (tg) { const x = tg.x, y = tg.y; G.fx.push({ k: 'meteor', x, y, t: 0, dur: 0.45, ice: true }); after(0.45, () => { novaAt(x, y, 34 * (1 + G.st.area), z.dmg * 3, 1.5, 0.6, 'ult'); G.shake = Math.max(G.shake, 0.15); }); }
       }
       if (z.t <= 0) G.blizzard = null;
     }
@@ -1924,6 +1982,7 @@ const HNS = (() => {
     }
     for (const b of G.pproj) {
       b.life -= dt;
+      if (b.ret && !b.back && b.life <= b.ret) arrowBack(b);
       if (b.home && b.home.hp > 0) {                  // 마법탄·추적 화살·비전 구슬: 겨눈 적 쪽으로 조금씩 꺾임(turn = 초당 꺾는 각)
         const h = b.home, want = Math.atan2(h.y - h.sh.wh[1] * 0.45 * h.scale - b.y, h.x - b.x), cur = Math.atan2(b.vy, b.vx);
         const tr = (b.turn || D.MAGIC.turn) * dt, na = cur + Math.max(-tr, Math.min(tr, angDiff(want, cur))), sp = Math.hypot(b.vx, b.vy);
@@ -1966,7 +2025,7 @@ const HNS = (() => {
         if (b.boom) { b.boom = false; blastAt(e.x, e.y, 22 * (1 + G.st.area), b.dmg * 0.8, 'ult', '#ff8a3a'); }   // 총알 폭풍 폭발탄(처음 맞은 자리에서 한 번)
         if (b.k === 'arrow' && b.kind === 'atk' && G.uniq.has('blastarrow')) blastAt(e.x, e.y, 18 * (1 + G.st.area), b.dmg * 0.5, 'abil', '#ffb070');   // 폭발 화살(전설)
         if (b.star) blastAt(e.x, e.y, 16 * (1 + G.st.area), b.dmg * 0.35, 'abil', '#fff2a0');   // 별빛 사냥(진화): 맞은 자리 작게 터짐
-        if (--b.pierce < 0) b.life = 0;
+        if (--b.pierce < 0) { if (b.ret && !b.back) arrowBack(b); else b.life = 0; }
       });
       if (b.k !== 'wave' && !b.axe && !b.tw && pillarAt(b.x, b.y + 8)) b.life = 0;   // 검기·도끼·회오리는 기둥에 안 막힘(도끼는 위에서 되돌아옴)
       for (const o of potsNear) if (!o.gone && Math.hypot(o.x - b.x, o.y - 12 - b.y) < (b.r || 4) + 7) smashPot(o);   // 탄 높이(몸 가운데) 기준 · 적 맞히는 식과 같은 꼴
@@ -2034,7 +2093,7 @@ const HNS = (() => {
       }
     }
     G.drops = G.drops.filter(d => !d.got);
-    G.buff.fury = Math.max(0, G.buff.fury - dt); G.buff.swift = Math.max(0, G.buff.swift - dt);
+    G.buff.fury = Math.max(0, G.buff.fury - dt); G.buff.swift = Math.max(0, G.buff.swift - dt); G.buff.wind = Math.max(0, G.buff.wind - dt);
     {                                                 // 제단 밟기 · 항아리는 몸으로 부딪혀도 깨짐(멀리 쏘는 직업도 걸어가 깰 수 있게)
       const cx = Math.floor(p.x / CHUNK), cy = Math.floor(p.y / CHUNK);
       for (let gx = cx - 1; gx <= cx + 1; gx++) for (let gy = cy - 1; gy <= cy + 1; gy++)
@@ -2789,9 +2848,9 @@ const HNS = (() => {
         ctx.fillStyle = '#2b1a2a'; ctx.fillRect(x - 2, y - 2, 5, 5); ctx.fillStyle = '#4a5a3a'; ctx.fillRect(x - 1, y - 1, 3, 3);
         if (Math.floor(G.t * 16) % 2) { ctx.fillStyle = '#ffe06a'; ctx.fillRect(x + 1, y - 3, 1, 1); }
       } else if (f.k === 'meteor') {                  // 메테오: 위에서 비스듬히 떨어지는 불덩이
-        const x = f.x - 60 * (1 - k), y = f.y - 120 * (1 - k) - 8;
-        ctx.globalAlpha = 0.6; ctx.strokeStyle = '#ff8a3a'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(x - 14, y - 26); ctx.lineTo(x, y); ctx.stroke(); ctx.globalAlpha = 1;
-        ctx.fillStyle = '#ff6a2a'; ctx.beginPath(); ctx.arc(x, y, 5, 0, 7); ctx.fill(); ctx.fillStyle = '#ffe06a'; ctx.beginPath(); ctx.arc(x, y, 3, 0, 7); ctx.fill();
+        const x = f.x - 60 * (1 - k), y = f.y - 120 * (1 - k) - 8, ice = f.ice;   // ice = 얼음 혜성(눈보라 ★)
+        ctx.globalAlpha = 0.6; ctx.strokeStyle = ice ? '#8fd8ff' : '#ff8a3a'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(x - 14, y - 26); ctx.lineTo(x, y); ctx.stroke(); ctx.globalAlpha = 1;
+        ctx.fillStyle = ice ? '#5ac8ff' : '#ff6a2a'; ctx.beginPath(); ctx.arc(x, y, 5, 0, 7); ctx.fill(); ctx.fillStyle = ice ? '#ffffff' : '#ffe06a'; ctx.beginPath(); ctx.arc(x, y, 3, 0, 7); ctx.fill();
       } else if (f.k === 'rubble') {
         ctx.globalAlpha = 1 - k; ctx.fillStyle = '#776b8a';
         for (let i = 0; i < 8; i++) ctx.fillRect(Math.round(f.x + Math.cos(i) * 14 * (0.5 + k)), Math.round(f.y - 10 + Math.sin(i * 2) * 8 * (0.5 + k)), 3, 3);
@@ -2995,6 +3054,10 @@ const HNS = (() => {
     P.stats.ultKills = Math.max(P.stats.ultKills, G.run.ultKillsMax);
     for (const k of ['elites', 'chests', 'legends', 'evos', 'dodges', 'goblins', 'secrets', 'shrines']) SAVE.stat(k, G.run[k] || 0);
     if (cleared) P.stats.clears[G.dun.key] = (P.stats.clears[G.dun.key] || 0) + 1;
+    // 직업 경험치(11-01 스킬 나무): 이 판에서 얻은 경험치 그대로(쓰러져도 · 무한 던전 ×JOB.endless) → 그 직업 레벨 = 나무 점수
+    const jg = Math.round(G.xpAll * (endless ? D.JOB.endless : 1)), j0 = D.jobLevel(P.job[G.cls] || 0).lv;
+    P.job[G.cls] = (P.job[G.cls] || 0) + jg;
+    const job = { cls: G.cls, gain: jg, lv0: j0, lv1: D.jobLevel(P.job[G.cls]).lv };
     let best = null;
     if (endless) {                                    // 무한 던전 직업마다 최고 기록(버틴 시간이 더 길면 새 기록)
       const E = P.stats.endless || (P.stats.endless = {}), old = E[G.cls] || null;
@@ -3004,7 +3067,7 @@ const HNS = (() => {
     }
     const done = checkAch();
     SAVE.save();
-    return { gold, bonus, scrap, scrapped, kept: G.bag.length, ach: done, best };
+    return { gold, bonus, scrap, scrapped, kept: G.bag.length, ach: done, best, job };
   }
   function checkAch() {                               // 끝낸 도전 과제 → 보상(금화·해금)
     const P = SAVE.P, done = [];

@@ -9,6 +9,8 @@ const SAVE = (() => {
     stash: [],                       // 창고 아이템
     equip: {},                       // 직업별 { weapon, armor, ring, amulet } = 아이템 id
     bless: {},                       // 축복 단계
+    job: {},                         // 직업마다 쌓인 직업 경험치(스킬 나무 점수 · 11-01)
+    tree: {},                        // 직업마다 찍은 스킬 나무 칸 { '스킬.열쇠': 단계 }
     unlocked: { classes: ['swordsman'], dungeons: ['crypt'] },
     ach: {},                         // 끝낸 도전 과제
     stats: { kills: {}, runs: 0, clears: {}, bosses: {}, goldTotal: 0, maxLv: 0, ultKills: 0, chests: 0, legends: 0, evos: 0, dodges: 0, elites: 0, goblins: 0, secrets: 0, bestTime: {}, endless: {} },   // endless = 무한 던전 직업마다 최고 기록(11-01)
